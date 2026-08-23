@@ -25,6 +25,7 @@ export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
       project: { name: cfg.name, layout: cfg.layout },
       pm,
       arch: getArchitecture(spec.arch),
+      specifier: (from: string, to: string) => base.specifier(from, to),
       sibling: cfg.apps.find((a) => a.id !== spec.id),
     }
     base.init(tree, ctx)
@@ -61,11 +62,13 @@ export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
 
   // 4. Render every composed file.
   for (const app of apps) {
-    getBase(app.spec.base).renderComposed(app.tree, {
+    const base = getBase(app.spec.base)
+    base.renderComposed(app.tree, {
       app: app.spec,
       project: { name: cfg.name, layout: cfg.layout },
       pm,
       arch: getArchitecture(app.spec.arch),
+      specifier: (from: string, to: string) => base.specifier(from, to),
       sibling: cfg.apps.find((a) => a.id !== app.spec.id),
     })
   }

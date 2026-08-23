@@ -10,6 +10,7 @@ const ctx: LayerCtx = {
   project: { name: 'hrims', layout: 'siblings' },
   pm: getPackageManager('npm'),
   arch: getArchitecture('type-based'),
+  specifier: (f: string, t: string) => nextBase.specifier(f, t),
 }
 
 function build(c: LayerCtx = ctx): FileTree {
@@ -83,6 +84,7 @@ describe('next base', () => {
       ...ctx,
       app: { ...ctx.app, arch: 'feature-based' as const },
       arch: getArchitecture('feature-based'),
+      specifier: (f: string, t: string) => nextBase.specifier(f, t),
     })
     expect(tree.exists('src/features/hello/Hello.tsx')).toBe(true)
     expect(tree.read('src/app/page.tsx')).toContain("from '@/features/hello/Hello'")

@@ -10,6 +10,10 @@ export const nextBase: Base = {
   label: 'Next.js',
   isServer: true,
 
+  specifier(_from: string, to: string): string {
+    return `@/${to.replace(/^src\//, '').replace(/\.(tsx?|jsx?)$/, '')}`
+  },
+
   init(tree: FileTree, ctx: LayerCtx): void {
     tree.write('tsconfig.json', TSCONFIG)
     tree.write('next.config.ts', NEXT_CONFIG)
@@ -18,7 +22,10 @@ export const nextBase: Base = {
     // component through whichever path the architecture chose.
     const componentPath = ctx.arch.path('component', 'Hello')
     tree.write(componentPath, HELLO_COMPONENT)
-    tree.write('src/app/page.tsx', renderPage(componentPath))
+    tree.write(
+      'src/app/page.tsx',
+      renderPage(ctx.specifier('src/app/page.tsx', componentPath))
+    )
 
     tree.pkg.setName(`${ctx.project.name}-${ctx.app.id}`)
     tree.pkg.addDep('next', dep('next'))
@@ -57,13 +64,8 @@ export const nextBase: Base = {
   },
 }
 
-/** `src/components/Hello.tsx` -> `@/components/Hello` */
-function importSpecifier(path: string): string {
-  return `@/${path.replace(/^src\//, '').replace(/\.tsx?$/, '')}`
-}
-
-function renderPage(componentPath: string): string {
-  return `import { Hello } from '${importSpecifier(componentPath)}'
+function renderPage(componentSpecifier: string): string {
+  return `import { Hello } from '${componentSpecifier}'
 
 export default function Home() {
   return (

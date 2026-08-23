@@ -3,6 +3,7 @@ import { FileTree } from '@/generator/tree/file-tree'
 import { prismaLayer } from '@/generator/layers/prisma'
 import { getPackageManager } from '@/generator/pm'
 import { getArchitecture } from '@/generator/arch'
+import { nextBase } from '@/generator/bases/next'
 import type { LayerCtx } from '@/generator/layers/types'
 
 const ctx = (
@@ -14,6 +15,7 @@ const ctx = (
   project: { name: 'hrims', layout: 'siblings' },
   pm: getPackageManager(pm),
   arch: getArchitecture(arch),
+  specifier: (f: string, t: string) => nextBase.specifier(f, t),
 })
 
 describe('prisma layer', () => {

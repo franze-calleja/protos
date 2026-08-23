@@ -10,6 +10,8 @@ export interface LayerCtx {
   pm: PackageManagerStrategy
   /** Derived from the app's arch. Layers resolve paths through it, never directly. */
   arch: ArchitectureStrategy
+  /** Module specifier for importing `to` from within `from`, in the base's idiom. */
+  specifier(from: string, to: string): string
   /** The other app in the project, if there is one. */
   sibling?: AppSpec
 }

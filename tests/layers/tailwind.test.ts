@@ -3,6 +3,7 @@ import { FileTree } from '@/generator/tree/file-tree'
 import { tailwindLayer } from '@/generator/layers/tailwind'
 import { getPackageManager } from '@/generator/pm'
 import { getArchitecture } from '@/generator/arch'
+import { nextBase } from '@/generator/bases/next'
 import type { LayerCtx } from '@/generator/layers/types'
 
 const ctx: LayerCtx = {
@@ -10,6 +11,7 @@ const ctx: LayerCtx = {
   project: { name: 'hrims', layout: 'siblings' },
   pm: getPackageManager('npm'),
   arch: getArchitecture('type-based'),
+  specifier: (f: string, t: string) => nextBase.specifier(f, t),
 }
 
 describe('tailwind layer', () => {

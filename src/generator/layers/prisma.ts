@@ -78,9 +78,9 @@ export default defineConfig({
 })
 `
 
-function client(target: Target): string {
+function client(target: Target, clientSpecifier: string): string {
   return `import { ${target.adapterClass} } from '${target.adapterPkg}'
-import { PrismaClient } from '@/generated/prisma/client'
+import { PrismaClient } from '${clientSpecifier}'
 
 const adapter = new ${target.adapterClass}({ connectionString: process.env.DATABASE_URL as string })
 
@@ -106,7 +106,8 @@ export const prismaLayer: Layer = {
 
     tree.write('prisma/schema.prisma', schema(target))
     tree.write('prisma.config.ts', PRISMA_CONFIG)
-    tree.write(ctx.arch.path('db-client'), client(target))
+    const dbPath = ctx.arch.path('db-client')
+    tree.write(dbPath, client(target, ctx.specifier(dbPath, `${GENERATED_DIR}/client`)))
 
     tree.env.set('DATABASE_URL', target.url, {
       comment: 'Local development database',
