@@ -12,6 +12,25 @@
 
 **Predecessors:** Plans 1 and 2, both executed and merged (PR #1). Read their execution-notes headers.
 
+> **Execution notes (2026-08-24).** Three things this plan did not anticipate,
+> all found by tier 3 and all in the monorepo + pnpm + prisma combination:
+>
+> 1. **pnpm's `allowBuilds` was written to the wrong place.** The pipeline
+>    emitted it per app, but pnpm reads only the workspace file at the root, so
+>    a monorepo install failed with the same `ERR_PNPM_IGNORED_BUILDS` already
+>    fixed once for siblings. Placement is layout-dependent, so it moved out of
+>    the pipeline and into the assemblers.
+> 2. **`esbuild` also needs its install script.** It arrives via `tsx` (Express
+>    base) and `vite` (vitest layer). The mechanism was right; it just needed
+>    the callers that actually bring the dependency to declare it.
+> 3. **Turborepo 2.10 requires a `packageManager` field** in the root
+>    package.json or it refuses to resolve the workspace. That is
+>    package-manager knowledge, so `PackageManagerStrategy` supplies it as an
+>    exact pinned version.
+>
+> Adding prisma to config 06 specifically to exercise this combination is what
+> surfaced all three. Configs chosen to cross axes earn their place.
+
 ## Why this plan matters
 
 Three things built in Plan 1 have never run: `PackageManagerStrategy.workspaceFiles`, `PackageManagerStrategy.internalDep`, and `ctx.sibling`. All three exist solely for this plan. If the Assembler seam was designed wrong, this is where it shows — which is exactly why we shipped all three layouts in v1 rather than deferring monorepo.
