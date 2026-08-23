@@ -12,16 +12,7 @@
 
 **Predecessor:** `docs/superpowers/plans/2026-08-23-protos-generator-core.md` (executed; read its execution-notes header)
 
-> **⚠ INCOMPLETE — do not execute yet.** Tasks 1–7 are written. Still to be
-> written before this plan is runnable:
-> - **Task 8** — the `eslint-prettier` layer (flat config, ESLint 10 +
->   typescript-eslint 8, `lint`/`format` scripts)
-> - **Task 9** — the `gh-actions` RootLayer, rendering `.github/workflows/ci.yml`
->   from `ctx.ci` (the `CiStrategy` built in Plan 1 and still unused)
-> - **Task 10** — Express smoke configs added to `tests/snapshots/configs.ts`,
->   plus a self-review pass over the whole plan
->
-> No self-review has run over Tasks 1–7 yet either.
+**Status:** complete — 10 tasks, self-reviewed, ready to execute.
 
 ## Where this sits
 
@@ -332,12 +323,12 @@ git commit -m "feat: implement layered and modular backend architectures"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/bases/specifier.test.ts`:
+Create `tests/bases/specifier.test.ts`. It covers Next only — the Express half
+belongs to Task 3, so that each task commits green on its own:
 
 ```ts
 import { describe, it, expect } from 'vitest'
 import { nextBase } from '@/generator/bases/next'
-import { expressBase } from '@/generator/bases/express'
 
 describe('next specifiers', () => {
   it('uses the @ alias and drops the extension', () => {
@@ -353,39 +344,12 @@ describe('next specifiers', () => {
   })
 })
 
-describe('express specifiers', () => {
-  it('uses a relative path, because Node resolves imports at runtime', () => {
-    expect(expressBase.specifier('src/lib/db.ts', 'src/generated/prisma/client')).toBe(
-      '../generated/prisma/client'
-    )
-  })
-
-  it('prefixes a same-directory import with ./', () => {
-    expect(expressBase.specifier('src/routes/health.route.ts', 'src/routes/util.ts')).toBe(
-      './util'
-    )
-  })
-
-  it('walks up out of a nested module folder', () => {
-    expect(
-      expressBase.specifier('src/modules/health/health.service.ts', 'src/shared/db.ts')
-    ).toBe('../../shared/db')
-  })
-
-  it('never emits an alias, which Node cannot resolve', () => {
-    expect(
-      expressBase.specifier('src/controllers/health.controller.ts', 'src/services/health.service.ts')
-    ).not.toContain('@/')
-  })
-})
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npm test -- tests/bases/specifier.test.ts`
-Expected: FAIL — cannot resolve `@/generator/bases/express` (Task 3 creates it; this test is written first because the contract belongs to this task)
-
-**Note:** this test cannot pass until Task 3 lands the Express base. Implement Steps 3–6 now, and expect the `express` half of this file to stay red until Task 3 completes. The `next` half must pass at the end of this task.
+Expected: FAIL — `nextBase.specifier is not a function`
 
 - [ ] **Step 3: Add specifier to the Base contract**
 
@@ -650,6 +614,35 @@ describe('express base', () => {
     expect(build().read('README.md')).toContain('npm run dev')
   })
 })
+
+describe('express specifiers', () => {
+  it('uses a relative path, because Node resolves imports at runtime', () => {
+    expect(expressBase.specifier('src/lib/db.ts', 'src/generated/prisma/client')).toBe(
+      '../generated/prisma/client'
+    )
+  })
+
+  it('prefixes a same-directory import with ./', () => {
+    expect(expressBase.specifier('src/routes/health.route.ts', 'src/routes/util.ts')).toBe(
+      './util'
+    )
+  })
+
+  it('walks up out of a nested module folder', () => {
+    expect(
+      expressBase.specifier('src/modules/health/health.service.ts', 'src/shared/db.ts')
+    ).toBe('../../shared/db')
+  })
+
+  it('never emits an alias, which Node cannot resolve', () => {
+    expect(
+      expressBase.specifier(
+        'src/controllers/health.controller.ts',
+        'src/services/health.service.ts'
+      )
+    ).not.toContain('@/')
+  })
+})
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -841,7 +834,7 @@ Add `express`, `@types/express`, and `tsx` to `VERSIONS` in `src/generator/versi
 - [ ] **Step 7: Run tests to verify they pass**
 
 Run: `npx tsc --noEmit && npm test -- tests/bases`
-Expected: PASS — including the `express` half of `tests/bases/specifier.test.ts` from Task 2
+Expected: PASS
 
 - [ ] **Step 8: Commit**
 
@@ -853,6 +846,21 @@ git commit -m "feat: add Express base with a route-controller-service vertical s
 ---
 
 ### Task 4: The vitest layer
+
+**Contract change in this task.** `Layer.manifest` widens from
+`manifest(arch)` to `manifest(arch, base: BaseId)`. This layer's output depends
+on the base, and the manifest must agree with what `apply` actually writes or
+the UI preview lies. Widening is non-breaking — existing layers declare fewer
+parameters and keep working untouched. Make the change in
+`src/generator/layers/types.ts`:
+
+```ts
+  /** Paths this layer contributes, for the UI's preview. Asserted in tests. */
+  manifest(arch: ArchitectureStrategy, base: BaseId): string[]
+```
+
+and update the two call sites in `tests/layers/tailwind.test.ts` and
+`tests/layers/prisma.test.ts` to pass `ctx.app.base` as the second argument.
 
 **Files:**
 - Create: `src/generator/layers/vitest.ts`
@@ -959,11 +967,16 @@ import type { FileTree } from '../tree/file-tree'
 import { dep } from '../versions'
 
 const CONFIG = `import { defineConfig } from 'vitest/config'
+import path from 'node:path'
 
 export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+  },
+  // Without this a Next project's generated test cannot resolve '@/...'.
+  resolve: {
+    alias: { '@': path.resolve(import.meta.dirname, 'src') },
   },
 })
 `
@@ -1003,8 +1016,8 @@ export const vitestLayer: Layer = {
   label: 'Vitest',
   description: 'Unit and integration testing, with one real passing test',
   appliesTo: ['next', 'vite-react', 'express'],
-  manifest: (arch) =>
-    arch.supports('route')
+  manifest: (arch, base) =>
+    base === 'express'
       ? ['vitest.config.ts', 'tests/health.test.ts']
       : ['vitest.config.ts', 'tests/example.test.ts', arch.path('util', 'greet')],
 
@@ -1264,7 +1277,54 @@ describe('pino layer', () => {
 Run: `npm test -- tests/layers/pino-layer.test.ts`
 Expected: FAIL — cannot resolve `@/generator/layers/pino`
 
-- [ ] **Step 3: Write the layer**
+- [ ] **Step 3: Let a middleware entry contribute an import without a call**
+
+The logger is imported into `src/app.ts` but is not itself middleware — it is
+passed *to* `pinoHttp`. `MiddlewareModel` currently emits an `app.use()` for
+every entry, so it needs a way to carry an import alone.
+
+In `src/generator/tree/middleware-model.ts`:
+
+```ts
+export interface MiddlewareEntry {
+  /** The expression passed to app.use(), e.g. `helmet()`. Empty when importOnly. */
+  expr: string
+  /** The binding exactly as it appears after `import` — use `{ name }` for a named import. */
+  importName?: string
+  importFrom?: string
+  order: number
+  /** Contribute the import but no app.use() call. */
+  importOnly?: boolean
+}
+```
+
+and filter in `statements()`:
+
+```ts
+  statements(): string {
+    return [...this.entries]
+      .filter((e) => !e.importOnly)
+      .sort((a, b) => a.order - b.order)
+      .map((e) => `app.use(${e.expr})\n`)
+      .join('')
+  }
+```
+
+Add this test to `tests/tree/provider-model.test.ts`, inside the existing
+`MiddlewareModel` describe block:
+
+```ts
+  it('contributes an import without an app.use call when importOnly is set', () => {
+    const m = new MiddlewareModel()
+    m.push({ expr: '', importName: '{ logger }', importFrom: './logger', order: 1, importOnly: true })
+    expect(m.imports()).toContain('{ logger }')
+    expect(m.statements()).toBe('')
+  })
+```
+
+Run: `npm test -- tests/tree` — expected PASS.
+
+- [ ] **Step 4: Write the layer**
 
 Create `src/generator/layers/pino.ts`:
 
@@ -1305,51 +1365,12 @@ export const pinoLayer: Layer = {
 
     tree.pkg.addDep('pino-http', dep('pino-http'))
     tree.middleware.push({
-      expr: `pinoHttp({ logger })`,
+      expr: 'pinoHttp({ logger })',
       importName: 'pinoHttp',
       importFrom: 'pino-http',
       order: PINO_HTTP_ORDER,
     })
-    tree.middleware.push({
-      expr: '',
-      importName: '{ logger }',
-      importFrom: ctx.specifier('src/app.ts', loggerPath),
-      order: PINO_HTTP_ORDER,
-    })
-  },
-}
-
-registerLayer(pinoLayer)
-```
-
-**Careful:** the second `push` above is wrong — `MiddlewareModel.statements()` would emit `app.use()` with an empty expression. Do not write it that way. Instead give `MiddlewareEntry` an optional `importOnly` flag in `src/generator/tree/middleware-model.ts`:
-
-```ts
-export interface MiddlewareEntry {
-  expr: string
-  importName?: string
-  importFrom?: string
-  order: number
-  /** Contribute the import but no app.use() call. */
-  importOnly?: boolean
-}
-```
-
-and filter in `statements()`:
-
-```ts
-  statements(): string {
-    return [...this.entries]
-      .filter((e) => !e.importOnly)
-      .sort((a, b) => a.order - b.order)
-      .map((e) => `app.use(${e.expr})\n`)
-      .join('')
-  }
-```
-
-Then the second push becomes:
-
-```ts
+    // The logger is an argument, not middleware — import only.
     tree.middleware.push({
       expr: '',
       importName: '{ logger }',
@@ -1357,29 +1378,22 @@ Then the second push becomes:
       order: PINO_HTTP_ORDER,
       importOnly: true,
     })
+  },
+}
+
+registerLayer(pinoLayer)
 ```
 
-Add a test for it in `tests/tree/provider-model.test.ts`:
-
-```ts
-  it('contributes an import without an app.use call when importOnly is set', () => {
-    const m = new MiddlewareModel()
-    m.push({ expr: '', importName: '{ logger }', importFrom: './logger', order: 1, importOnly: true })
-    expect(m.imports()).toContain('{ logger }')
-    expect(m.statements()).toBe('')
-  })
-```
-
-- [ ] **Step 4: Register it and add versions**
+- [ ] **Step 5: Register it and add versions**
 
 In `src/generator/layers/index.ts` add `import './pino'`. Add `pino`, `pino-http`, and `pino-pretty` to `VERSIONS`.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 6: Run tests to verify they pass**
 
 Run: `npx tsc --noEmit && npm test -- tests/layers/pino-layer.test.ts tests/tree`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/generator tests
@@ -1568,3 +1582,459 @@ Expected: PASS (6 tests)
 git add src/generator tests
 git commit -m "feat: add helmet and rate-limit middleware layers"
 ```
+
+---
+
+### Task 8: The eslint-prettier layer
+
+**Files:**
+- Create: `src/generator/layers/eslint-prettier.ts`
+- Modify: `src/generator/layers/index.ts`, `src/generator/versions.ts`
+- Test: `tests/layers/eslint-prettier.test.ts`
+
+**Interfaces:**
+- Consumes: `Layer`, `LayerCtx`, `dep()`
+- Produces: `eslintPrettierLayer` registered under id `eslint-prettier`
+
+Like the vitest layer, this branches on `ctx.app.base` — and for the same reason. A Next project linted without `eslint-config-next` misses the framework's own rules, which is exactly the "habits carried over from another ecosystem" failure protos exists to prevent.
+
+- [ ] **Step 1: Resolve the versions**
+
+```bash
+for p in eslint prettier typescript-eslint @eslint/js eslint-config-next; do
+  echo "  '$p': '^$(npm view $p version)',"
+done
+```
+
+`eslint-config-next` tracks the Next major, so confirm it reads `^16.x` and matches the pinned `next`. Add all five to `VERSIONS`.
+
+- [ ] **Step 2: Write the failing test**
+
+Create `tests/layers/eslint-prettier.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest'
+import { FileTree } from '@/generator/tree/file-tree'
+import { eslintPrettierLayer } from '@/generator/layers/eslint-prettier'
+import { getPackageManager } from '@/generator/pm'
+import { getArchitecture } from '@/generator/arch'
+import { expressBase } from '@/generator/bases/express'
+import { nextBase } from '@/generator/bases/next'
+import type { LayerCtx } from '@/generator/layers/types'
+
+const expressCtx: LayerCtx = {
+  app: { id: 'api', base: 'express', arch: 'layered', layers: ['eslint-prettier'], options: {} },
+  project: { name: 'hrims', layout: 'siblings' },
+  pm: getPackageManager('npm'),
+  arch: getArchitecture('layered'),
+  specifier: (f: string, t: string) => expressBase.specifier(f, t),
+}
+
+const nextCtx: LayerCtx = {
+  app: { id: 'web', base: 'next', arch: 'type-based', layers: ['eslint-prettier'], options: {} },
+  project: { name: 'hrims', layout: 'siblings' },
+  pm: getPackageManager('npm'),
+  arch: getArchitecture('type-based'),
+  specifier: (f: string, t: string) => nextBase.specifier(f, t),
+}
+
+describe('eslint-prettier layer', () => {
+  it('writes a flat config and a prettier config', () => {
+    const tree = new FileTree()
+    eslintPrettierLayer.apply(tree, expressCtx)
+    expect(tree.exists('eslint.config.mjs')).toBe(true)
+    expect(tree.exists('.prettierrc')).toBe(true)
+  })
+
+  it('adds lint and format scripts', () => {
+    const tree = new FileTree()
+    eslintPrettierLayer.apply(tree, expressCtx)
+    const pkg = JSON.parse(tree.pkg.render())
+    expect(pkg.scripts.lint).toBe('eslint .')
+    expect(pkg.scripts.format).toBe('prettier --write .')
+  })
+
+  it('uses typescript-eslint for a plain TypeScript project', () => {
+    const tree = new FileTree()
+    eslintPrettierLayer.apply(tree, expressCtx)
+    const config = tree.read('eslint.config.mjs')!
+    expect(config).toContain('typescript-eslint')
+    expect(config).not.toContain('eslint-config-next')
+  })
+
+  it('uses eslint-config-next for a Next project, which has its own rules', () => {
+    const tree = new FileTree()
+    eslintPrettierLayer.apply(tree, nextCtx)
+    const config = tree.read('eslint.config.mjs')!
+    expect(config).toContain('next')
+    expect(JSON.parse(tree.pkg.render()).devDependencies['eslint-config-next']).toBeDefined()
+  })
+
+  it('ignores build output and generated code', () => {
+    const tree = new FileTree()
+    eslintPrettierLayer.apply(tree, expressCtx)
+    const config = tree.read('eslint.config.mjs')!
+    for (const ignored of ['dist', 'node_modules', 'src/generated']) {
+      expect(config).toContain(ignored)
+    }
+  })
+
+  it('declares every path it writes in its manifest', () => {
+    const tree = new FileTree()
+    eslintPrettierLayer.apply(tree, expressCtx)
+    for (const p of tree.paths()) {
+      expect(eslintPrettierLayer.manifest(expressCtx.arch)).toContain(p)
+    }
+  })
+})
+```
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `npm test -- tests/layers/eslint-prettier.test.ts`
+Expected: FAIL — cannot resolve `@/generator/layers/eslint-prettier`
+
+- [ ] **Step 4: Write the layer**
+
+Create `src/generator/layers/eslint-prettier.ts`:
+
+```ts
+import { registerLayer } from './registry'
+import type { Layer, LayerCtx } from './types'
+import type { FileTree } from '../tree/file-tree'
+import { dep } from '../versions'
+
+const IGNORES = `{ ignores: ['dist', '.next', 'node_modules', 'src/generated'] }`
+
+const TS_CONFIG = `import js from '@eslint/js'
+import tseslint from 'typescript-eslint'
+
+export default tseslint.config(
+  ${IGNORES},
+  js.configs.recommended,
+  ...tseslint.configs.recommended
+)
+`
+
+const NEXT_CONFIG = `import { FlatCompat } from '@eslint/eslintrc'
+
+const compat = new FlatCompat({ baseDirectory: import.meta.dirname })
+
+export default [
+  ${IGNORES},
+  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+]
+`
+
+const PRETTIERRC = `{
+  "semi": false,
+  "singleQuote": true,
+  "printWidth": 100
+}
+`
+
+export const eslintPrettierLayer: Layer = {
+  id: 'eslint-prettier',
+  label: 'ESLint + Prettier',
+  description: 'Linting and formatting, configured for this framework',
+  appliesTo: ['next', 'vite-react', 'express', 'expo'],
+  manifest: () => ['eslint.config.mjs', '.prettierrc'],
+
+  apply(tree: FileTree, ctx: LayerCtx): void {
+    const isNext = ctx.app.base === 'next'
+
+    tree.write('eslint.config.mjs', isNext ? NEXT_CONFIG : TS_CONFIG)
+    tree.write('.prettierrc', PRETTIERRC)
+
+    tree.pkg.addDevDep('eslint', dep('eslint'))
+    tree.pkg.addDevDep('prettier', dep('prettier'))
+
+    if (isNext) {
+      // Next ships its own rule set; linting a Next app without it misses
+      // framework-specific correctness rules.
+      tree.pkg.addDevDep('eslint-config-next', dep('eslint-config-next'))
+      tree.pkg.addDevDep('@eslint/eslintrc', dep('@eslint/eslintrc'))
+    } else {
+      tree.pkg.addDevDep('@eslint/js', dep('@eslint/js'))
+      tree.pkg.addDevDep('typescript-eslint', dep('typescript-eslint'))
+    }
+
+    tree.pkg.addScript('lint', 'eslint .')
+    tree.pkg.addScript('format', 'prettier --write .')
+  },
+}
+
+registerLayer(eslintPrettierLayer)
+```
+
+Resolve `@eslint/eslintrc` with `npm view @eslint/eslintrc version` and add it to `VERSIONS` too — `FlatCompat` lives there.
+
+- [ ] **Step 5: Register it**
+
+In `src/generator/layers/index.ts` add `import './eslint-prettier'`.
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `npx tsc --noEmit && npm test -- tests/layers/eslint-prettier.test.ts`
+Expected: PASS (6 tests)
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/generator tests
+git commit -m "feat: add eslint-prettier layer with framework-aware config"
+```
+
+---
+
+### Task 9: The gh-actions root layer
+
+**Files:**
+- Create: `src/generator/layers/gh-actions.ts`
+- Modify: `src/generator/layers/index.ts`
+- Test: `tests/layers/gh-actions.test.ts`
+
+**Interfaces:**
+- Consumes: `RootLayer`, `RootCtx`, `ProjectTree`, `ctx.ci`
+- Produces: `ghActionsRootLayer` registered under id `gh-actions`
+
+This is the second `RootLayer` and the first consumer of `CiStrategy`, which Plan 1 built and nothing has used. Like `docker`, it writes at the project root and takes its variant from the assembler rather than branching on layout itself.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/layers/gh-actions.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest'
+import { FileTree } from '@/generator/tree/file-tree'
+import { ghActionsRootLayer } from '@/generator/layers/gh-actions'
+import { siblingsAssembler } from '@/generator/assemblers/siblings'
+import { getPackageManager } from '@/generator/pm'
+import type { ProjectTree } from '@/generator/assemblers/types'
+import type { RootCtx } from '@/generator/layers/root-types'
+import type { ProtosConfig } from '@/generator/config/types'
+
+const cfg: ProtosConfig = {
+  v: 1,
+  name: 'hrims',
+  layout: 'siblings',
+  pm: 'npm',
+  apps: [{ id: 'api', base: 'express', arch: 'layered', layers: [], options: {} }],
+  layers: ['gh-actions'],
+}
+
+const ctxFor = (pmId: 'npm' | 'pnpm'): RootCtx => {
+  const pm = getPackageManager(pmId)
+  return {
+    project: { name: 'hrims', layout: 'siblings' },
+    pm,
+    docker: siblingsAssembler.dockerStrategy(pm),
+    ci: siblingsAssembler.ciStrategy(pm),
+  }
+}
+
+function project(): ProjectTree {
+  return {
+    root: new FileTree(),
+    apps: [{ spec: cfg.apps[0], tree: new FileTree(), isServer: true }],
+    appPath: (s) => siblingsAssembler.appPath(s, cfg),
+  }
+}
+
+describe('gh-actions root layer', () => {
+  it('writes a workflow at the project root, not inside an app', () => {
+    const p = project()
+    ghActionsRootLayer.applyRoot(p, ctxFor('npm'))
+    expect(p.root.exists('.github/workflows/ci.yml')).toBe(true)
+    expect(p.apps[0].tree.exists('.github/workflows/ci.yml')).toBe(false)
+  })
+
+  it('gives each app its own job scoped to that app directory', () => {
+    const p = project()
+    ghActionsRootLayer.applyRoot(p, ctxFor('npm'))
+    const wf = p.root.read('.github/workflows/ci.yml')!
+    expect(wf).toContain('  api:')
+    expect(wf).toContain('working-directory: hrims-api')
+  })
+
+  it('takes its setup steps from the package manager, not from a branch on layout', () => {
+    const npmWf = (() => {
+      const p = project()
+      ghActionsRootLayer.applyRoot(p, ctxFor('npm'))
+      return p.root.read('.github/workflows/ci.yml')!
+    })()
+    const pnpmWf = (() => {
+      const p = project()
+      ghActionsRootLayer.applyRoot(p, ctxFor('pnpm'))
+      return p.root.read('.github/workflows/ci.yml')!
+    })()
+    expect(npmWf).toContain('cache: npm')
+    expect(pnpmWf).toContain('pnpm/action-setup')
+  })
+
+  it('runs on push and pull request', () => {
+    const p = project()
+    ghActionsRootLayer.applyRoot(p, ctxFor('npm'))
+    const wf = p.root.read('.github/workflows/ci.yml')!
+    expect(wf).toContain('push:')
+    expect(wf).toContain('pull_request:')
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npm test -- tests/layers/gh-actions.test.ts`
+Expected: FAIL — cannot resolve `@/generator/layers/gh-actions`
+
+- [ ] **Step 3: Write the layer**
+
+Create `src/generator/layers/gh-actions.ts`:
+
+```ts
+import { registerRootLayer } from './root-registry'
+import type { RootCtx, RootLayer } from './root-types'
+import type { ProjectTree } from '../assemblers/types'
+
+export const ghActionsRootLayer: RootLayer = {
+  id: 'gh-actions',
+  label: 'GitHub Actions',
+  description: 'A CI workflow that installs and builds every app',
+  manifest: ['.github/workflows/ci.yml'],
+
+  applyRoot(project: ProjectTree, ctx: RootCtx): void {
+    const appPaths = new Map(project.apps.map((a) => [a.spec.id, project.appPath(a.spec)]))
+    // The workflow shape comes from the assembler's CiStrategy, so this layer
+    // never learns what layout it is running under.
+    project.root.write('.github/workflows/ci.yml', ctx.ci.workflow(project.apps, appPaths))
+  },
+}
+
+registerRootLayer(ghActionsRootLayer)
+```
+
+- [ ] **Step 4: Register it**
+
+In `src/generator/layers/index.ts` add `import './gh-actions'`.
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `npx tsc --noEmit && npm test -- tests/layers/gh-actions.test.ts`
+Expected: PASS (4 tests)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/generator tests
+git commit -m "feat: add gh-actions root layer"
+```
+
+---
+
+### Task 10: Express smoke configs
+
+**Files:**
+- Modify: `tests/snapshots/configs.ts`
+- Test: the existing snapshot and smoke suites pick these up automatically
+
+**Interfaces:**
+- Consumes: `CANONICAL_CONFIGS` from Plan 1
+- Produces: two Express entries in the matrix
+
+These are the spec's matrix configs 3 and 4, minus the two-app pairing, which arrives with the `separate`/`monorepo` assemblers in Plan 3.
+
+- [ ] **Step 1: Add the configs**
+
+In `tests/snapshots/configs.ts`, add to `CANONICAL_CONFIGS`:
+
+```ts
+  {
+    name: '03-express-prisma-mysql-layered-npm',
+    config: {
+      v: 1,
+      name: 'demo',
+      layout: 'siblings',
+      pm: 'npm',
+      apps: [
+        {
+          id: 'api',
+          base: 'express',
+          arch: 'layered',
+          layers: ['prisma', 'pino', 'helmet', 'rate-limit', 'zod', 'vitest'],
+          options: { db: 'mysql' },
+        },
+      ],
+      layers: ['docker', 'gh-actions'],
+    },
+  },
+  {
+    name: '04-express-modular-npm',
+    config: {
+      v: 1,
+      name: 'demo',
+      layout: 'siblings',
+      pm: 'npm',
+      apps: [
+        {
+          id: 'api',
+          base: 'express',
+          arch: 'modular',
+          layers: ['zod', 'vitest', 'eslint-prettier', 'pino'],
+          options: {},
+        },
+      ],
+      layers: ['gh-actions'],
+    },
+  },
+```
+
+- [ ] **Step 2: Record and read the snapshots**
+
+Run: `npm test -- tests/snapshots -u`
+
+Then read the recorded manifest:
+
+```bash
+sed -n '/03-express-prisma-mysql-layered/,/^`;$/p' tests/snapshots/__snapshots__/snapshot.test.ts.snap
+```
+
+Confirm by eye that config 03 lists `src/routes/health.route.ts`, `src/controllers/health.controller.ts`, `src/services/health.service.ts`, `prisma/schema.prisma`, `Dockerfile`, and that config 04 lists `src/modules/health/*` instead. A snapshot recorded without reading it is worthless.
+
+- [ ] **Step 3: Run the smoke matrix**
+
+Run: `npm run smoke`
+Expected: PASS for all six configs. This is slow — each runs a real install and build.
+
+The Express configs run `tsc`, so a broken relative specifier or a bad tsconfig fails here rather than silently shipping. If config 03 fails on the Prisma client import, that is Task 2's `specifier()` not being wired correctly — check `src/lib/db.ts` in the generated output for a stray `@/`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tests
+git commit -m "test: add express configs to the smoke matrix"
+```
+
+## Definition of done for Plan 2
+
+- [ ] `npm test` passes — tiers 1 and 2
+- [ ] `npm run smoke` passes — all six configs install and build
+- [ ] `npx tsc --noEmit` is clean
+- [ ] `getArchitecture('layered')` and `getArchitecture('modular')` return real strategies
+- [ ] A generated Express app answers `GET /health` and its generated test proves it
+- [ ] Switching an Express app between `layered` and `modular` visibly relocates working code
+- [ ] No layer branches on `ctx.project.layout`
+- [ ] `npm run check:versions` reports every new dependency as current or deliberately held back
+
+## What Plan 3 inherits
+
+| Interface | Plan 2 leaves it | Plan 3 adds |
+|---|---|---|
+| `ArchitectureStrategy` | 4 of 4 implemented | — |
+| `Base` | `next`, `express` | `vite-react`, `expo` (Plan 4) |
+| `Assembler` | `siblings` only | `separate`, `monorepo` |
+| `CiStrategy` | consumed by `gh-actions` | monorepo variant |
+| `PackageManagerStrategy` | `workspaceFiles` / `internalDep` still unused | both consumed by the monorepo assembler |
+
+Two apps in one project become possible for the first time in Plan 3, which is
+what makes `separate` and `monorepo` meaningful — and what finally exercises
+`ctx.sibling`, present since Plan 1 and still unread by anything.
