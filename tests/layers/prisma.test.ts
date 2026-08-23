@@ -138,3 +138,16 @@ describe('prisma 7 configuration', () => {
     expect(tree.pkg.render()).toContain('dotenv')
   })
 })
+
+describe('prisma adapter construction', () => {
+  it('passes a bare connection string, which every adapter accepts', () => {
+    for (const db of ['postgres', 'mysql']) {
+      const tree = new FileTree()
+      prismaLayer.apply(tree, ctx(db))
+      const client = tree.read('src/lib/db.ts')!
+      expect(client, db).toContain('(process.env.DATABASE_URL as string)')
+      // The object form is PostgreSQL-only and will not compile for MySQL.
+      expect(client, db).not.toContain('connectionString:')
+    }
+  })
+})

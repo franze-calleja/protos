@@ -9,6 +9,12 @@ import { dep } from '../versions'
  * the client is imported from that path rather than `@prisma/client`, and a
  * driver adapter is required.
  */
+/**
+ * Every Prisma 7 adapter accepts a bare connection string. The object form
+ * ({ connectionString }) is PostgreSQL-only — PrismaMariaDb takes a
+ * mariadb.PoolConfig, which has no such property, so the object form fails to
+ * compile for MySQL.
+ */
 interface Target {
   provider: string
   url: string
@@ -82,7 +88,7 @@ function client(target: Target, clientSpecifier: string): string {
   return `import { ${target.adapterClass} } from '${target.adapterPkg}'
 import { PrismaClient } from '${clientSpecifier}'
 
-const adapter = new ${target.adapterClass}({ connectionString: process.env.DATABASE_URL as string })
+const adapter = new ${target.adapterClass}(process.env.DATABASE_URL as string)
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
 

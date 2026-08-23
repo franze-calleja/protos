@@ -30,7 +30,7 @@ demo/demo-web/src/app/globals.css  11b8e69e89a3
 demo/demo-web/src/app/layout.tsx  facb3c7c80fb
 demo/demo-web/src/app/page.tsx  2f8898a70fa0
 demo/demo-web/src/components/Hello.tsx  17bc8873505a
-demo/demo-web/src/lib/db.ts  95eb43fc6212
+demo/demo-web/src/lib/db.ts  2648c4aa20b1
 demo/demo-web/tsconfig.json  f23c3b4f2520
 demo/docker-compose.yml  cdd372668d15"
 `;
@@ -49,7 +49,7 @@ demo/demo-api/prisma/schema.prisma  557f86acebac
 demo/demo-api/src/app.ts  3ffbe2bcb798
 demo/demo-api/src/controllers/health.controller.ts  18cdad47a3a8
 demo/demo-api/src/index.ts  a3b8da40f58c
-demo/demo-api/src/lib/db.ts  bc9aee3ee5f4
+demo/demo-api/src/lib/db.ts  0cfbe0c74359
 demo/demo-api/src/lib/env.ts  fd13a730204b
 demo/demo-api/src/lib/logger.ts  7b894187582e
 demo/demo-api/src/lib/rate-limit.ts  4abb89ed5b38
@@ -107,7 +107,7 @@ demo/demo-web/src/app/globals.css  11b8e69e89a3
 demo/demo-web/src/app/layout.tsx  facb3c7c80fb
 demo/demo-web/src/app/page.tsx  781a1dd86547
 demo/demo-web/src/features/hello/Hello.tsx  17bc8873505a
-demo/demo-web/src/lib/db.ts  95eb43fc6212
+demo/demo-web/src/lib/db.ts  2648c4aa20b1
 demo/demo-web/tsconfig.json  f23c3b4f2520
 demo/docker-compose.yml  cdd372668d15"
 `;
