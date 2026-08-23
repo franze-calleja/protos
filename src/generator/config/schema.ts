@@ -7,6 +7,8 @@ import {
   ARCH_IDS,
   ARCH_BY_BASE,
   DEFAULT_ARCH,
+  ROOT_LAYER_IDS,
+  LAYOUTS_WITHOUT_ROOT,
   NAME_PATTERN,
   MAX_APPS,
   MAX_LAYERS,
@@ -37,14 +39,27 @@ const appSchema = z
   })
   .transform((app) => ({ ...app, arch: app.arch ?? DEFAULT_ARCH[app.base] }))
 
-export const configSchema = z.object({
-  v: z.literal(1),
-  name: z.string().regex(NAME_PATTERN),
-  layout: z.enum(LAYOUT_IDS),
-  pm: z.enum(PM_IDS).default('npm'),
-  apps: z.array(appSchema).min(1).max(MAX_APPS),
-  layers: z.array(z.enum(LAYER_IDS)).max(MAX_LAYERS).default([]),
-})
+export const configSchema = z
+  .object({
+    v: z.literal(1),
+    name: z.string().regex(NAME_PATTERN),
+    layout: z.enum(LAYOUT_IDS),
+    pm: z.enum(PM_IDS).default('npm'),
+    apps: z.array(appSchema).min(1).max(MAX_APPS),
+    layers: z.array(z.enum(LAYER_IDS)).max(MAX_LAYERS).default([]),
+  })
+  .superRefine((cfg, ctx) => {
+    if (!LAYOUTS_WITHOUT_ROOT.includes(cfg.layout)) return
+    for (const id of cfg.layers) {
+      if (ROOT_LAYER_IDS.includes(id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['layers'],
+          message: `"${id}" needs a project root, which the "${cfg.layout}" layout does not have`,
+        })
+      }
+    }
+  })
 
 export function parseConfig(input: unknown): ProtosConfig {
   const result = configSchema.safeParse(input)

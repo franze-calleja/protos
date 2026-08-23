@@ -41,6 +41,8 @@ export interface ProjectTree {
 
 export interface Assembler {
   id: LayoutId
+  /** Whether this layout has a shared project root that root layers can write to. */
+  hasProjectRoot: boolean
   appPath(spec: AppSpec, cfg: ProtosConfig): string
   assemble(apps: BuiltApp[], cfg: ProtosConfig, root: FileTree): Deliverable[]
   dockerStrategy(pm: PackageManagerStrategy): DockerStrategy

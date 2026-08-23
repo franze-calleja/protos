@@ -84,6 +84,7 @@ ${jobs}
 
 export const siblingsAssembler: Assembler = {
   id: 'siblings',
+  hasProjectRoot: true,
 
   appPath(spec: AppSpec, cfg: ProtosConfig): string {
     return `${cfg.name}-${spec.id}`

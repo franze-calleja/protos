@@ -35,6 +35,7 @@ export const dockerRootLayer: RootLayer = {
   id: 'docker',
   label: 'Docker',
   description: 'Dockerfile per app plus a compose file that starts everything',
+  requiresProjectRoot: true,
   requiresServerApp: true,
   manifest: ['docker-compose.yml', 'Dockerfile', '.dockerignore'],
 
