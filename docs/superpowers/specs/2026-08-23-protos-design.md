@@ -87,7 +87,7 @@ root `package.json` versus a separate `pnpm-workspace.yaml`.
 | Internal dep | `"@app/types": "*"` | `"@app/types": "workspace:*"` |
 
 **Generated projects use plain installs, never frozen ones.** protos cannot
-produce a lockfile — that would mean running the package manager, which §3.5
+produce a lockfile — that would mean running the package manager, which §3.6
 forbids — so a generated `Dockerfile` or CI job using `npm ci` or
 `pnpm install --frozen-lockfile` would fail on its first run. The README tells
 the user to commit a lockfile after their first install. Reproducibility is
@@ -98,7 +98,49 @@ yarn's classic/berry split is two strategies wearing one name, and bun moves
 fast enough that generated projects would rot between smoke runs. Both are
 drop-in strategy files if that changes.
 
-### 3.5 No code execution during generation
+### 3.5 Architecture is a strategy of path roles
+
+protos was pitched (§1) as configuring folder structure, so architecture is
+selectable rather than fixed per base. The obstacle is that a layer writing
+`src/lib/db.ts` has hardcoded someone's folder convention.
+
+So **layers name roles, not paths**. `db-client`, `component`, `service`,
+`controller` — the architecture resolves each to a location:
+
+| Role | express/layered | express/modular | react/type-based | react/feature-based |
+|---|---|---|---|---|
+| `db-client` | `src/lib/db.ts` | `src/shared/db.ts` | `src/lib/db.ts` | `src/lib/db.ts` |
+| `component` | — | — | `src/components/X.tsx` | `src/features/x/X.tsx` |
+| `store` | — | — | `src/store/x.ts` | `src/features/x/store.ts` |
+| `route` | `src/routes/x.route.ts` | `src/modules/x/x.route.ts` | — | — |
+| `controller` | `src/controllers/x.controller.ts` | `src/modules/x/x.controller.ts` | — | — |
+| `service` | `src/services/x.service.ts` | `src/modules/x/x.service.ts` | — | — |
+
+An architecture throws on a role it has no home for, rather than inventing a
+path. Shared infrastructure stays in `src/lib` under every architecture:
+feature-based organisation applies to feature code, and burying the database
+client inside one feature would make it harder to find, not easier.
+
+**How much choice exists depends on the framework.** Next.js and Expo impose
+file-based routing, so their only real axis is how non-route code is organised
+— offering "MVC" there would be a lie. Express imposes nothing, which is where
+the choice genuinely matters.
+
+| Base | v1 architectures | Default |
+|---|---|---|
+| `next`, `vite-react`, `expo` | `type-based`, `feature-based` | `type-based` |
+| `express` | `layered`, `modular` | `layered` |
+
+Invalid pairings are rejected by the schema, not silently coerced.
+
+**Every architecture must generate a working vertical slice.** Emitting
+`src/domain/`, `src/application/`, and `src/infrastructure/` with nothing in
+them is cargo cult, not architecture. Each option ships a path that actually
+runs — for the React family, a page importing a component through the chosen
+location; for Express in Plan 2, a route through controller and service with a
+passing test.
+
+### 3.6 No code execution during generation
 
 protos never shells out, never runs `create-next-app`, never executes user
 input. Generation is pure in-memory data transformation. This rules out an
@@ -117,10 +159,12 @@ type LayerId  = 'tailwind' | 'tanstack-query' | 'zustand' | 'zod'
               | 'eslint-prettier' | 'vitest' | 'docker' | 'gh-actions'
 type LayoutId = 'siblings' | 'separate' | 'monorepo'
 type PmId     = 'npm' | 'pnpm'
+type ArchId   = 'type-based' | 'feature-based' | 'layered' | 'modular'
 
 type AppSpec = {
   id: string                        // 'api' | 'web' | 'mobile'
   base: BaseId
+  arch: ArchId                      // defaults per base; validated against it
   layers: LayerId[]
   options: Record<string, string>   // e.g. { db: 'postgres' }
 }
@@ -207,6 +251,8 @@ interface Layer {
   requires?: LayerId[]
   conflictsWith?: LayerId[]
   options?: LayerOptionSchema        // e.g. prisma: db = postgres | mysql
+  /** Paths contributed under a given architecture, for the UI preview. */
+  manifest(arch: ArchitectureStrategy): string[]
   apply(tree: FileTree, ctx: Ctx): void
 }
 
@@ -214,6 +260,7 @@ interface Ctx {
   app: AppSpec
   project: { name: string; layout: LayoutId }
   pm: PackageManagerStrategy         // derived from cfg.pm
+  arch: ArchitectureStrategy         // derived from the app's arch
   sibling?: AppSpec                  // the other app, if any
 }
 ```
@@ -361,9 +408,10 @@ files tying them together.
 | `docker` | root-level | — | Dockerfile per app + compose |
 | `gh-actions` | root-level | — | install, lint, test, build |
 
-Express follows layer-based organization (routes / controllers / services /
-models), per the user's stated default. Next.js and Expo follow their
-frameworks' own conventions.
+Architecture is selected per app, not fixed per base — see §3.5 for the role
+table and the valid pairings. Express defaults to layer-based organization
+(routes / controllers / services / models), per the user's stated default;
+the React-family bases default to type-based.
 
 ### Compatibility rules
 
@@ -398,7 +446,7 @@ The URL rewrites on every change (`history.replaceState`), so sharing is
 copying the address bar.
 
 **The preview computes paths only, never file contents.** Each layer declares a
-static `manifest: string[]` of the paths it contributes, so the client renders
+a `manifest(arch)` of the paths it contributes, so the client renders
 the tree from catalog metadata alone — no base templates are shipped to the
 browser and no generation runs client-side. The server remains the single
 authority for actual file contents. This keeps the bundle small and means the
@@ -453,7 +501,11 @@ Roughly 10 representative configs are generated for real, then
 9. `next` minimal (base only, no layers)
 10. maximal config — every compatible layer on a two-app monorepo
 
-Package manager is a fourth axis, covered by swapping rather than multiplying:
+Architecture is a fifth axis and package manager a fourth. Both are covered by
+swapping rather than multiplying: one config runs feature-based architecture
+and the rest type-based.
+
+Package manager swaps the same way:
 configs 2 and 5 run **pnpm**, the rest run npm. Config 5 matters most — it is
 the only one exercising `workspace:*` and `pnpm-workspace.yaml` together.
 
@@ -534,4 +586,5 @@ implementations would risk designing it wrong and paying to redo it.
 2. Generation completes in under 300ms server-side.
 3. A share link fully reconstructs someone else's configuration.
 4. Adding a new layer touches exactly one file plus its tests.
-5. protos stores nothing about anyone.
+5. Every architecture produces a project that runs, not a tree of empty folders.
+6. protos stores nothing about anyone.

@@ -4,7 +4,7 @@
 
 **Goal:** Build an end-to-end generator pipeline that turns an encoded config string into a downloadable ZIP containing a real, buildable Next.js project.
 
-**Architecture:** A pure, in-memory generator. A config object (validated by Zod, encoded in a URL) is fed through per-app *layers* that mutate a `FileTree`. Files touched by more than one layer are never string-patched — they are structured models rendered once at the end. An `Assembler` then places app trees into a deliverable and emits root files. Nothing shells out; nothing is persisted.
+**Architecture:** A pure, in-memory generator. Layers name semantic *roles* rather than paths, so folder structure is selectable without any layer knowing about it. A config object (validated by Zod, encoded in a URL) is fed through per-app *layers* that mutate a `FileTree`. Files touched by more than one layer are never string-patched — they are structured models rendered once at the end. An `Assembler` then places app trees into a deliverable and emits root files. Nothing shells out; nothing is persisted.
 
 **Tech Stack:** Next.js 16.2.x (App Router, TypeScript), Node LTS, npm, Zod, fflate, Prettier, Vitest.
 
@@ -16,7 +16,7 @@ The v1 spec covers three independently testable subsystems. Splitting them keeps
 
 | Plan | Scope | Deliverable |
 |---|---|---|
-| **1 — Generator Core (this plan)** | Config, encoding, FileTree + all 6 models, layer/assembler/root-layer/package-manager contracts, `next` base, 2 layers, siblings assembler, docker root layer, ZIP sink, API route, test tiers 1–3 | A URL that downloads a working Next.js project |
+| **1 — Generator Core (this plan)** | Config, encoding, FileTree + all 6 models, layer/assembler/root-layer/package-manager/architecture contracts, `next` base, 2 layers, siblings assembler, docker root layer, ZIP sink, API route, test tiers 1–3 | A URL that downloads a working Next.js project |
 | **2 — Catalog** | Remaining 3 bases, remaining 13 layers, `separate` + `monorepo` assemblers, full 10-config smoke matrix | Full stack coverage |
 | **3 — Web UI** | Two-column config UI, live path-manifest preview, URL sync, share links | The product |
 
@@ -46,6 +46,11 @@ src/
     api/generate/route.ts       # ZIP endpoint (the only Next-aware file in the pipeline)
   generator/
     versions.ts                 # single source of dependency versions for generated projects
+    arch/
+      types.ts                  # ArchitectureStrategy, PathRole
+      type-based.ts
+      feature-based.ts
+      index.ts                  # getArchitecture()
     pm/
       types.ts                  # PackageManagerStrategy
       npm.ts                    # default
@@ -81,6 +86,7 @@ src/
       zip.ts
     pipeline.ts                 # generate(cfg) -> Deliverable[]
 tests/
+  arch/                         # tier 1
   pm/                           # tier 1
   layers/                       # tier 1
   snapshots/                    # tier 2 (+ __snapshots__/)
@@ -291,6 +297,30 @@ describe('parseConfig', () => {
   it('rejects an unsupported package manager', () => {
     expect(() => parseConfig({ ...valid, pm: 'yarn' })).toThrow(ConfigError)
   })
+
+  it('defaults a next app to type-based architecture', () => {
+    expect(parseConfig(valid).apps[0].arch).toBe('type-based')
+  })
+
+  it('accepts feature-based for a next app', () => {
+    const cfg = { ...valid, apps: [{ ...valid.apps[0], arch: 'feature-based' }] }
+    expect(parseConfig(cfg).apps[0].arch).toBe('feature-based')
+  })
+
+  it('rejects a backend architecture on a frontend base', () => {
+    const cfg = { ...valid, apps: [{ ...valid.apps[0], arch: 'layered' }] }
+    expect(() => parseConfig(cfg)).toThrow(ConfigError)
+  })
+
+  it('defaults an express app to layered architecture', () => {
+    const cfg = { ...valid, apps: [{ id: 'api', base: 'express', layers: [], options: {} }] }
+    expect(parseConfig(cfg).apps[0].arch).toBe('layered')
+  })
+
+  it('rejects an unknown architecture', () => {
+    const cfg = { ...valid, apps: [{ ...valid.apps[0], arch: 'hexagonal' }] }
+    expect(() => parseConfig(cfg)).toThrow(ConfigError)
+  })
 })
 ```
 
@@ -331,9 +361,28 @@ export type LayoutId = (typeof LAYOUT_IDS)[number]
 export const PM_IDS = ['npm', 'pnpm'] as const
 export type PmId = (typeof PM_IDS)[number]
 
+export const ARCH_IDS = ['type-based', 'feature-based', 'layered', 'modular'] as const
+export type ArchId = (typeof ARCH_IDS)[number]
+
+/** Which architectures make sense for which base. Enforced by the schema. */
+export const ARCH_BY_BASE: Record<BaseId, ArchId[]> = {
+  next: ['type-based', 'feature-based'],
+  'vite-react': ['type-based', 'feature-based'],
+  expo: ['type-based', 'feature-based'],
+  express: ['layered', 'modular'],
+}
+
+export const DEFAULT_ARCH: Record<BaseId, ArchId> = {
+  next: 'type-based',
+  'vite-react': 'type-based',
+  expo: 'type-based',
+  express: 'layered',
+}
+
 export interface AppSpec {
   id: string
   base: BaseId
+  arch: ArchId
   layers: LayerId[]
   options: Record<string, string>
 }
@@ -357,16 +406,32 @@ Create `src/generator/config/schema.ts`:
 
 ```ts
 import { z } from 'zod'
-import { BASE_IDS, LAYER_IDS, LAYOUT_IDS, PM_IDS, NAME_PATTERN, MAX_APPS, MAX_LAYERS } from './types'
+import {
+  BASE_IDS, LAYER_IDS, LAYOUT_IDS, PM_IDS, ARCH_IDS,
+  ARCH_BY_BASE, DEFAULT_ARCH, NAME_PATTERN, MAX_APPS, MAX_LAYERS,
+} from './types'
 import type { ProtosConfig } from './types'
 import { ConfigError } from './errors'
 
-const appSchema = z.object({
-  id: z.string().regex(/^[a-z][a-z0-9-]{0,19}$/),
-  base: z.enum(BASE_IDS),
-  layers: z.array(z.enum(LAYER_IDS)).max(MAX_LAYERS),
-  options: z.record(z.string(), z.string()).default({}),
-})
+const appSchema = z
+  .object({
+    id: z.string().regex(/^[a-z][a-z0-9-]{0,19}$/),
+    base: z.enum(BASE_IDS),
+    arch: z.enum(ARCH_IDS).optional(),
+    layers: z.array(z.enum(LAYER_IDS)).max(MAX_LAYERS),
+    options: z.record(z.string(), z.string()).default({}),
+  })
+  // Omitting arch is normal — short share links rely on it.
+  .transform((app) => ({ ...app, arch: app.arch ?? DEFAULT_ARCH[app.base] }))
+  .superRefine((app, ctx) => {
+    if (!ARCH_BY_BASE[app.base].includes(app.arch)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['arch'],
+        message: `architecture "${app.arch}" is not valid for base "${app.base}"`,
+      })
+    }
+  })
 
 export const configSchema = z.object({
   v: z.literal(1),
@@ -389,7 +454,7 @@ export function parseConfig(input: unknown): ProtosConfig {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npm test -- tests/config/schema.test.ts`
-Expected: PASS (10 tests)
+Expected: PASS (15 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -426,8 +491,8 @@ const cfg: ProtosConfig = {
   layout: 'siblings',
   pm: 'pnpm',
   apps: [
-    { id: 'api', base: 'express', layers: ['prisma', 'pino'], options: { db: 'postgres' } },
-    { id: 'web', base: 'next', layers: ['tailwind'], options: {} },
+    { id: 'api', base: 'express', arch: 'layered', layers: ['prisma', 'pino'], options: { db: 'postgres' } },
+    { id: 'web', base: 'next', arch: 'type-based', layers: ['tailwind'], options: {} },
   ],
   layers: ['docker'],
 }
@@ -1276,7 +1341,7 @@ git commit -m "feat: add provider and middleware models with deterministic order
 - Consumes: `FileTree` (Task 4), `AppSpec`, `LayerId`, `BaseId`, `LayoutId` (Task 2)
 - Produces: `Layer`, `LayerCtx`, `LAYERS` registry, `resolveLayers(app: AppSpec): Layer[]`
 
-**Refinement of the spec:** `LayerCtx` carries `pm` but deliberately does **not** carry `docker`/`ci` strategies. Per-app layers never need them — `docker` and `gh-actions` are `RootLayer`s (Task 13) and receive strategies through `RootCtx`. This makes per-app layers strictly layout-agnostic by construction rather than by convention.
+**Refinement of the spec:** `LayerCtx` carries `pm` and `arch` but deliberately does **not** carry `docker`/`ci` strategies. Per-app layers never need them — `docker` and `gh-actions` are `RootLayer`s (Task 14) and receive strategies through `RootCtx`. This makes per-app layers strictly layout-agnostic by construction rather than by convention.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1288,13 +1353,13 @@ import { resolveLayers } from '@/generator/layers/resolve'
 import type { Layer } from '@/generator/layers/types'
 import type { AppSpec, LayerId } from '@/generator/config/types'
 
-/** Stub layers keep this task testable without depending on Task 11. */
+/** Stub layers keep this task testable without depending on Task 12. */
 const stub = (id: string, over: Partial<Layer> = {}): Layer => ({
   id: id as LayerId,
   label: id,
   description: id,
   appliesTo: ['next'],
-  manifest: [],
+  manifest: () => [],
   apply: () => {},
   ...over,
 })
@@ -1363,12 +1428,15 @@ Create `src/generator/layers/types.ts`:
 import type { FileTree } from '../tree/file-tree'
 import type { AppSpec, BaseId, LayerId, LayoutId } from '../config/types'
 import type { PackageManagerStrategy } from '../pm/types'
+import type { ArchitectureStrategy } from '../arch/types'
 
 export interface LayerCtx {
   app: AppSpec
   project: { name: string; layout: LayoutId }
   /** Derived from cfg.pm. Layers use it to name commands in docs and scripts. */
   pm: PackageManagerStrategy
+  /** Derived from the app's arch. Layers resolve paths through it, never directly. */
+  arch: ArchitectureStrategy
   /** The other app in the project, if there is one. */
   sibling?: AppSpec
 }
@@ -1380,8 +1448,8 @@ export interface Layer {
   appliesTo: BaseId[]
   requires?: LayerId[]
   conflictsWith?: LayerId[]
-  /** Static paths this layer contributes, for the UI's preview. Asserted in tests. */
-  manifest: string[]
+  /** Paths this layer contributes under a given architecture, for the UI's preview. Asserted in tests. */
+  manifest(arch: ArchitectureStrategy): string[]
   apply(tree: FileTree, ctx: LayerCtx): void
 }
 ```
@@ -1695,7 +1763,230 @@ git commit -m "feat: add package manager strategy for npm and pnpm"
 
 ---
 
-### Task 10: Base contract and the Next.js base template
+### Task 10: ArchitectureStrategy and path roles
+
+**Files:**
+- Create: `src/generator/arch/types.ts`, `src/generator/arch/type-based.ts`, `src/generator/arch/feature-based.ts`, `src/generator/arch/index.ts`
+- Test: `tests/arch/strategy.test.ts`
+
+**Interfaces:**
+- Consumes: `ArchId` (Task 2)
+- Produces: `PathRole`, `ArchitectureStrategy`, `getArchitecture(id: ArchId): ArchitectureStrategy`, `typeBasedArch`, `featureBasedArch`
+
+Layers must never name a path directly. They name a **role** — `db-client`, `component`, `service` — and the architecture resolves it. That is what makes folder structure selectable without every layer growing a branch.
+
+Plan 1 implements the two React-family architectures (`type-based`, `feature-based`). `layered` and `modular` arrive in Plan 2 alongside the Express base that gives them meaning — but the contract lands here, while only two layers exist to update.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/arch/strategy.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest'
+import { getArchitecture } from '@/generator/arch'
+
+describe('type-based architecture', () => {
+  const arch = getArchitecture('type-based')
+
+  it('groups components by kind', () => {
+    expect(arch.path('component', 'Hello')).toBe('src/components/Hello.tsx')
+  })
+
+  it('groups stores by kind', () => {
+    expect(arch.path('store', 'counter')).toBe('src/store/counter.ts')
+  })
+
+  it('keeps shared infrastructure in lib', () => {
+    expect(arch.path('db-client')).toBe('src/lib/db.ts')
+  })
+
+  it('reports which roles it supports', () => {
+    expect(arch.supports('component')).toBe(true)
+    expect(arch.supports('controller')).toBe(false)
+  })
+
+  it('throws on a role it does not support rather than inventing a path', () => {
+    expect(() => arch.path('controller', 'User')).toThrow(/not supported/i)
+  })
+})
+
+describe('feature-based architecture', () => {
+  const arch = getArchitecture('feature-based')
+
+  it('groups a component under its own feature folder', () => {
+    expect(arch.path('component', 'Hello')).toBe('src/features/hello/Hello.tsx')
+  })
+
+  it('puts a feature store beside its feature', () => {
+    expect(arch.path('store', 'Counter')).toBe('src/features/counter/store.ts')
+  })
+
+  it('still keeps shared infrastructure in lib', () => {
+    expect(arch.path('db-client')).toBe('src/lib/db.ts')
+  })
+
+  it('kebab-cases a multi-word feature folder', () => {
+    expect(arch.path('component', 'UserProfile')).toBe('src/features/user-profile/UserProfile.tsx')
+  })
+})
+
+describe('the two architectures differ where it matters', () => {
+  it('places components differently', () => {
+    expect(getArchitecture('type-based').path('component', 'Hello'))
+      .not.toBe(getArchitecture('feature-based').path('component', 'Hello'))
+  })
+
+  it('places shared infrastructure identically', () => {
+    expect(getArchitecture('type-based').path('db-client'))
+      .toBe(getArchitecture('feature-based').path('db-client'))
+  })
+})
+
+describe('getArchitecture', () => {
+  it('rejects an architecture with no implementation yet', () => {
+    expect(() => getArchitecture('layered')).toThrow(/not implemented/i)
+  })
+})
+```
+
+The last two tests are the important ones. Shared infrastructure staying in `src/lib` under both architectures is a deliberate decision, not an oversight: feature-based organisation applies to feature code, and scattering the database client into a feature folder would make it harder to find, not easier.
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npm test -- tests/arch/strategy.test.ts`
+Expected: FAIL — cannot resolve `@/generator/arch`
+
+- [ ] **Step 3: Write the contract**
+
+Create `src/generator/arch/types.ts`:
+
+```ts
+import type { ArchId } from '../config/types'
+
+/**
+ * What a file *is*, independent of where a given architecture puts it.
+ * Layers name roles; architectures resolve them to paths.
+ */
+export type PathRole =
+  | 'component'
+  | 'store'
+  | 'util'
+  | 'db-client'
+  | 'route'
+  | 'controller'
+  | 'service'
+  | 'model'
+
+export interface ArchitectureStrategy {
+  id: ArchId
+  /** Resolve a role to a concrete app-relative path. Throws for unsupported roles. */
+  path(role: PathRole, name?: string): string
+  /** Whether this architecture has a location for the role. */
+  supports(role: PathRole): boolean
+}
+
+export function kebab(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[\s_]+/g, '-')
+    .toLowerCase()
+}
+```
+
+- [ ] **Step 4: Write both architectures**
+
+Create `src/generator/arch/type-based.ts`:
+
+```ts
+import type { ArchitectureStrategy, PathRole } from './types'
+
+const PATHS: Partial<Record<PathRole, (name: string) => string>> = {
+  component: (n) => `src/components/${n}.tsx`,
+  store: (n) => `src/store/${n}.ts`,
+  util: (n) => `src/lib/${n}.ts`,
+  'db-client': () => 'src/lib/db.ts',
+}
+
+export const typeBasedArch: ArchitectureStrategy = {
+  id: 'type-based',
+  supports: (role) => role in PATHS,
+  path(role, name = 'index') {
+    const resolve = PATHS[role]
+    if (!resolve) {
+      throw new Error(`Role "${role}" is not supported by the type-based architecture`)
+    }
+    return resolve(name)
+  },
+}
+```
+
+Create `src/generator/arch/feature-based.ts`:
+
+```ts
+import type { ArchitectureStrategy, PathRole } from './types'
+import { kebab } from './types'
+
+const PATHS: Partial<Record<PathRole, (name: string) => string>> = {
+  component: (n) => `src/features/${kebab(n)}/${n}.tsx`,
+  store: (n) => `src/features/${kebab(n)}/store.ts`,
+  // Shared infrastructure deliberately stays shared — a feature folder is the
+  // wrong home for something every feature depends on.
+  util: (n) => `src/lib/${n}.ts`,
+  'db-client': () => 'src/lib/db.ts',
+}
+
+export const featureBasedArch: ArchitectureStrategy = {
+  id: 'feature-based',
+  supports: (role) => role in PATHS,
+  path(role, name = 'index') {
+    const resolve = PATHS[role]
+    if (!resolve) {
+      throw new Error(`Role "${role}" is not supported by the feature-based architecture`)
+    }
+    return resolve(name)
+  },
+}
+```
+
+Create `src/generator/arch/index.ts`:
+
+```ts
+import type { ArchId } from '../config/types'
+import type { ArchitectureStrategy } from './types'
+import { typeBasedArch } from './type-based'
+import { featureBasedArch } from './feature-based'
+
+const STRATEGIES: Partial<Record<ArchId, ArchitectureStrategy>> = {
+  'type-based': typeBasedArch,
+  'feature-based': featureBasedArch,
+}
+
+export function getArchitecture(id: ArchId): ArchitectureStrategy {
+  const arch = STRATEGIES[id]
+  if (!arch) {
+    throw new Error(`Architecture "${id}" is not implemented yet`)
+  }
+  return arch
+}
+
+export type { ArchitectureStrategy, PathRole } from './types'
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `npm test -- tests/arch`
+Expected: PASS (12 tests)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/generator/arch tests/arch
+git commit -m "feat: add architecture strategy with semantic path roles"
+```
+
+---
+
+### Task 11: Base contract and the Next.js base template
 
 **Files:**
 - Create: `src/generator/bases/types.ts`, `src/generator/bases/registry.ts`, `src/generator/bases/next/index.ts`, `src/generator/bases/next/files.ts`
@@ -1716,12 +2007,14 @@ import { describe, it, expect } from 'vitest'
 import { FileTree } from '@/generator/tree/file-tree'
 import { nextBase } from '@/generator/bases/next'
 import { getPackageManager } from '@/generator/pm'
+import { getArchitecture } from '@/generator/arch'
 import type { LayerCtx } from '@/generator/layers/types'
 
 const ctx: LayerCtx = {
-  app: { id: 'web', base: 'next', layers: [], options: {} },
+  app: { id: 'web', base: 'next', arch: 'type-based', layers: [], options: {} },
   project: { name: 'hrims', layout: 'siblings' },
   pm: getPackageManager('npm'),
+  arch: getArchitecture('type-based'),
 }
 
 function build(): FileTree {
@@ -1758,6 +2051,25 @@ describe('next base', () => {
 
   it('renders a layout with no provider wrapper when no layer added one', () => {
     expect(build().read('src/app/layout.tsx')).toContain('{children}')
+  })
+
+  it('places the example component by kind under type-based architecture', () => {
+    const tree = build()
+    expect(tree.exists('src/components/Hello.tsx')).toBe(true)
+    expect(tree.read('src/app/page.tsx')).toContain("from '@/components/Hello'")
+  })
+
+  it('places the example component in a feature folder under feature-based architecture', () => {
+    const tree = new FileTree()
+    const featureCtx = {
+      ...ctx,
+      app: { ...ctx.app, arch: 'feature-based' as const },
+      arch: getArchitecture('feature-based'),
+    }
+    nextBase.init(tree, featureCtx)
+    nextBase.renderComposed(tree, featureCtx)
+    expect(tree.exists('src/features/hello/Hello.tsx')).toBe(true)
+    expect(tree.read('src/app/page.tsx')).toContain("from '@/features/hello/Hello'")
   })
 
   it('documents npm commands in the README when npm is selected', () => {
@@ -1864,12 +2176,8 @@ const nextConfig: NextConfig = {}
 export default nextConfig
 `
 
-export const PAGE = `export default function Home() {
-  return (
-    <main>
-      <h1>It works</h1>
-    </main>
-  )
+export const HELLO_COMPONENT = `export function Hello() {
+  return <h1>It works</h1>
 }
 `
 ```
@@ -1882,7 +2190,7 @@ import type { Base } from '../types'
 import type { FileTree } from '../../tree/file-tree'
 import type { LayerCtx } from '../../layers/types'
 import { dep } from '../../versions'
-import { TSCONFIG, NEXT_CONFIG, PAGE } from './files'
+import { TSCONFIG, NEXT_CONFIG, HELLO_COMPONENT } from './files'
 
 export const nextBase: Base = {
   id: 'next',
@@ -1892,7 +2200,12 @@ export const nextBase: Base = {
   init(tree: FileTree, ctx: LayerCtx): void {
     tree.write('tsconfig.json', TSCONFIG)
     tree.write('next.config.ts', NEXT_CONFIG)
-    tree.write('src/app/page.tsx', PAGE)
+
+    // A working vertical slice, not just folder names: the page imports a
+    // component through whichever path the architecture chose.
+    const componentPath = ctx.arch.path('component', 'Hello')
+    tree.write(componentPath, HELLO_COMPONENT)
+    tree.write('src/app/page.tsx', renderPage(componentPath))
 
     tree.pkg.setName(`${ctx.project.name}-${ctx.app.id}`)
     tree.pkg.addDep('next', dep('next'))
@@ -1928,6 +2241,24 @@ export const nextBase: Base = {
   },
 }
 
+/** `src/components/Hello.tsx` -> `@/components/Hello` */
+function importSpecifier(path: string): string {
+  return `@/${path.replace(/^src\//, '').replace(/\.tsx?$/, '')}`
+}
+
+function renderPage(componentPath: string): string {
+  return `import { Hello } from '${importSpecifier(componentPath)}'
+
+export default function Home() {
+  return (
+    <main>
+      <Hello />
+    </main>
+  )
+}
+`
+}
+
 function renderLayout(tree: FileTree): string {
   return `${tree.providers.imports()}
 export const metadata = {
@@ -1958,7 +2289,7 @@ Ensure each appears in `VERSIONS` in `src/generator/versions.ts`.
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `npm test -- tests/bases/next.test.ts`
-Expected: PASS (8 tests)
+Expected: PASS (10 tests)
 
 - [ ] **Step 7: Commit**
 
@@ -1969,7 +2300,7 @@ git commit -m "feat: add base contract and Next.js base template"
 
 ---
 
-### Task 11: The tailwind and prisma layers
+### Task 12: The tailwind and prisma layers
 
 **Files:**
 - Create: `src/generator/layers/tailwind.ts`, `src/generator/layers/prisma.ts`
@@ -1991,12 +2322,14 @@ import { describe, it, expect } from 'vitest'
 import { FileTree } from '@/generator/tree/file-tree'
 import { tailwindLayer } from '@/generator/layers/tailwind'
 import { getPackageManager } from '@/generator/pm'
+import { getArchitecture } from '@/generator/arch'
 import type { LayerCtx } from '@/generator/layers/types'
 
 const ctx: LayerCtx = {
-  app: { id: 'web', base: 'next', layers: ['tailwind'], options: {} },
+  app: { id: 'web', base: 'next', arch: 'type-based', layers: ['tailwind'], options: {} },
   project: { name: 'hrims', layout: 'siblings' },
   pm: getPackageManager('npm'),
+  arch: getArchitecture('type-based'),
 }
 
 describe('tailwind layer', () => {
@@ -2016,7 +2349,7 @@ describe('tailwind layer', () => {
   it('declares every path it writes in its manifest', () => {
     const tree = new FileTree()
     tailwindLayer.apply(tree, ctx)
-    for (const p of tree.paths()) expect(tailwindLayer.manifest).toContain(p)
+    for (const p of tree.paths()) expect(tailwindLayer.manifest(ctx.arch)).toContain(p)
   })
 })
 ```
@@ -2028,12 +2361,18 @@ import { describe, it, expect } from 'vitest'
 import { FileTree } from '@/generator/tree/file-tree'
 import { prismaLayer } from '@/generator/layers/prisma'
 import { getPackageManager } from '@/generator/pm'
+import { getArchitecture } from '@/generator/arch'
 import type { LayerCtx } from '@/generator/layers/types'
 
-const ctx = (db: string, pm: 'npm' | 'pnpm' = 'npm'): LayerCtx => ({
-  app: { id: 'api', base: 'next', layers: ['prisma'], options: { db } },
+const ctx = (
+  db: string,
+  pm: 'npm' | 'pnpm' = 'npm',
+  arch: 'type-based' | 'feature-based' = 'type-based'
+): LayerCtx => ({
+  app: { id: 'api', base: 'next', arch, layers: ['prisma'], options: { db } },
   project: { name: 'hrims', layout: 'siblings' },
   pm: getPackageManager(pm),
+  arch: getArchitecture(arch),
 })
 
 describe('prisma layer', () => {
@@ -2051,7 +2390,7 @@ describe('prisma layer', () => {
 
   it('defaults to postgres when no db option is given', () => {
     const tree = new FileTree()
-    prismaLayer.apply(tree, { ...ctx('postgres'), app: { id: 'api', base: 'next', layers: ['prisma'], options: {} } })
+    prismaLayer.apply(tree, { ...ctx('postgres'), app: { id: 'api', base: 'next', arch: 'type-based', layers: ['prisma'], options: {} } })
     expect(tree.read('prisma/schema.prisma')).toContain('postgresql')
   })
 
@@ -2068,10 +2407,25 @@ describe('prisma layer', () => {
     expect(example).not.toContain('localhost')
   })
 
-  it('exports a single shared client instance', () => {
+  it('exports a single shared client instance at the architecture\'s db path', () => {
     const tree = new FileTree()
-    prismaLayer.apply(tree, ctx('postgres'))
-    expect(tree.read('src/lib/db.ts')).toContain('globalThis')
+    const c = ctx('postgres')
+    expect(tree.read(c.arch.path('db-client'))).toBeUndefined()
+    prismaLayer.apply(tree, c)
+    expect(tree.read(c.arch.path('db-client'))).toContain('globalThis')
+  })
+
+  it('keeps the db client in lib under feature-based architecture too', () => {
+    const tree = new FileTree()
+    prismaLayer.apply(tree, ctx('postgres', 'npm', 'feature-based'))
+    expect(tree.exists('src/lib/db.ts')).toBe(true)
+  })
+
+  it('declares every path it writes in its manifest', () => {
+    const tree = new FileTree()
+    const c = ctx('postgres')
+    prismaLayer.apply(tree, c)
+    for (const p of tree.paths()) expect(prismaLayer.manifest(c.arch)).toContain(p)
   })
 
   it('documents itself in the README using the selected package manager', () => {
@@ -2111,7 +2465,8 @@ export const tailwindLayer: Layer = {
   label: 'Tailwind CSS',
   description: 'Utility-first CSS framework',
   appliesTo: ['next', 'vite-react'],
-  manifest: ['src/app/globals.css', 'postcss.config.mjs'],
+  // Both paths are framework-fixed, so the architecture makes no difference here.
+  manifest: () => ['src/app/globals.css', 'postcss.config.mjs'],
 
   apply(tree: FileTree, _ctx: LayerCtx): void {
     tree.write('src/app/globals.css', GLOBALS_CSS)
@@ -2161,7 +2516,7 @@ export const prismaLayer: Layer = {
   label: 'Prisma ORM',
   description: 'Type-safe database access',
   appliesTo: ['next', 'express'],
-  manifest: ['prisma/schema.prisma', 'src/lib/db.ts'],
+  manifest: (arch) => ['prisma/schema.prisma', arch.path('db-client')],
 
   apply(tree: FileTree, ctx: LayerCtx): void {
     const dbOption = ctx.app.options.db ?? 'postgres'
@@ -2177,7 +2532,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 `)
-    tree.write('src/lib/db.ts', CLIENT)
+    tree.write(ctx.arch.path('db-client'), CLIENT)
 
     tree.env.set('DATABASE_URL', target.url, {
       comment: 'Local development database',
@@ -2220,7 +2575,7 @@ for p in tailwindcss @tailwindcss/postcss @prisma/client prisma; do echo "\"$p\"
 - [ ] **Step 7: Run tests to verify they pass**
 
 Run: `npm test -- tests/layers`
-Expected: PASS — 10 layer tests plus all 7 resolver tests from Task 8, which now find registered layers
+Expected: PASS — 14 layer tests plus all 8 resolver tests from Task 8, which now find registered layers
 
 - [ ] **Step 8: Commit**
 
@@ -2231,14 +2586,14 @@ git commit -m "feat: add tailwind and prisma layers"
 
 ---
 
-### Task 12: Assembler contract and the siblings assembler
+### Task 13: Assembler contract and the siblings assembler
 
 **Files:**
 - Create: `src/generator/assemblers/types.ts`, `src/generator/assemblers/registry.ts`, `src/generator/assemblers/siblings.ts`
 - Test: `tests/assemblers/siblings.test.ts`
 
 **Interfaces:**
-- Consumes: `FileTree` (Task 4), `AppSpec`/`ProtosConfig` (Task 2), `Base` (Task 10)
+- Consumes: `FileTree` (Task 4), `AppSpec`/`ProtosConfig` (Task 2), `Base` (Task 11)
 - Produces: `BuiltApp`, `Deliverable`, `ComposeService`, `DockerStrategy`, `CiStrategy`, `Assembler`, `ProjectTree`; `getAssembler(id: LayoutId): Assembler`; `siblingsAssembler`
 
 - [ ] **Step 1: Write the failing test**
@@ -2256,8 +2611,8 @@ import type { ProtosConfig } from '@/generator/config/types'
 const cfg: ProtosConfig = {
   v: 1, name: 'hrims', layout: 'siblings', pm: 'npm',
   apps: [
-    { id: 'api', base: 'express', layers: [], options: {} },
-    { id: 'web', base: 'next', layers: [], options: {} },
+    { id: 'api', base: 'express', arch: 'layered', layers: [], options: {} },
+    { id: 'web', base: 'next', arch: 'type-based', layers: [], options: {} },
   ],
   layers: [],
 }
@@ -2521,14 +2876,14 @@ git commit -m "feat: add assembler contract and siblings layout"
 
 ---
 
-### Task 13: RootLayer contract and the docker root layer
+### Task 14: RootLayer contract and the docker root layer
 
 **Files:**
 - Create: `src/generator/layers/root-types.ts`, `src/generator/layers/docker.ts`, `src/generator/layers/root-registry.ts`
 - Test: `tests/layers/docker.test.ts`
 
 **Interfaces:**
-- Consumes: `ProjectTree`, `DockerStrategy`, `BuiltApp` (Task 12); `FileTree` (Task 4)
+- Consumes: `ProjectTree`, `DockerStrategy`, `BuiltApp` (Task 13); `FileTree` (Task 4)
 - Produces: `RootLayer`, `RootCtx`, `ROOT_LAYERS`, `registerRootLayer`, `resolveRootLayers(cfg)`, `dockerRootLayer`
 
 This is the seam the spec's self-review added. `docker` writes a Dockerfile into *each app* and a single compose file at the *root*, which the per-app `Layer` signature cannot express. It also reads each app's `env` model to decide whether a database service belongs in compose — behaviour, not a checkbox.
@@ -2551,7 +2906,7 @@ import type { ProtosConfig } from '@/generator/config/types'
 
 const cfg: ProtosConfig = {
   v: 1, name: 'hrims', layout: 'siblings', pm: 'npm',
-  apps: [{ id: 'web', base: 'next', layers: [], options: {} }],
+  apps: [{ id: 'web', base: 'next', arch: 'type-based', layers: [], options: {} }],
   layers: ['docker'],
 }
 
@@ -2754,14 +3109,14 @@ git commit -m "feat: add RootLayer contract and docker root layer"
 
 ---
 
-### Task 14: Pipeline orchestrator
+### Task 15: Pipeline orchestrator
 
 **Files:**
 - Create: `src/generator/pipeline.ts`
 - Test: `tests/pipeline.test.ts`
 
 **Interfaces:**
-- Consumes: everything from Tasks 2–13
+- Consumes: everything from Tasks 2–14
 - Produces: `generate(cfg: ProtosConfig): Promise<Deliverable[]>`
 
 Ordering is load-bearing: root layers run **before** `renderComposed` so that anything they add to a model still reaches `package.json` and `.env`.
@@ -2777,7 +3132,7 @@ import type { ProtosConfig } from '@/generator/config/types'
 
 const cfg: ProtosConfig = {
   v: 1, name: 'hrims', layout: 'siblings', pm: 'npm',
-  apps: [{ id: 'web', base: 'next', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
+  apps: [{ id: 'web', base: 'next', arch: 'type-based', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
   layers: ['docker'],
 }
 
@@ -2831,6 +3186,17 @@ describe('generate', () => {
     expect(out.files.get('hrims-web/src/lib/db.ts')).not.toContain('\t')
   })
 
+  it('threads the architecture choice into generated paths', async () => {
+    const [typeBased] = await generate(cfg)
+    const featureCfg = { ...cfg, apps: [{ ...cfg.apps[0], arch: 'feature-based' as const }] }
+    const [featureBased] = await generate(featureCfg)
+    expect(typeBased.files.has('hrims-web/src/components/Hello.tsx')).toBe(true)
+    expect(featureBased.files.has('hrims-web/src/features/hello/Hello.tsx')).toBe(true)
+    // Shared infrastructure stays put under both.
+    expect(typeBased.files.has('hrims-web/src/lib/db.ts')).toBe(true)
+    expect(featureBased.files.has('hrims-web/src/lib/db.ts')).toBe(true)
+  })
+
   it('threads the package manager choice into every artifact', async () => {
     const [npmOut] = await generate(cfg)
     const [pnpmOut] = await generate({ ...cfg, pm: 'pnpm' })
@@ -2860,6 +3226,7 @@ import { resolveLayers } from './layers/resolve'
 import { ROOT_LAYERS } from './layers/root-registry'
 import { getAssembler } from './assemblers/registry'
 import { getPackageManager } from './pm'
+import { getArchitecture } from './arch'
 import type { BuiltApp, Deliverable, ProjectTree } from './assemblers/types'
 import './bases/index'
 import './layers/index'
@@ -2877,6 +3244,7 @@ export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
       app: spec,
       project: { name: cfg.name, layout: cfg.layout },
       pm,
+      arch: getArchitecture(spec.arch),
       sibling: cfg.apps.find((a) => a.id !== spec.id),
     }
     base.init(tree, ctx)
@@ -2909,6 +3277,7 @@ export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
       app: app.spec,
       project: { name: cfg.name, layout: cfg.layout },
       pm,
+      arch: getArchitecture(app.spec.arch),
       sibling: cfg.apps.find((a) => a.id !== app.spec.id),
     })
   }
@@ -2965,12 +3334,12 @@ export {}
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `npm test -- tests/pipeline.test.ts`
-Expected: PASS (8 tests)
+Expected: PASS (9 tests)
 
 - [ ] **Step 6: Run the whole suite**
 
 Run: `npm test`
-Expected: PASS — every test from Tasks 1–14
+Expected: PASS — every test from Tasks 1–15
 
 - [ ] **Step 7: Commit**
 
@@ -2981,14 +3350,14 @@ git commit -m "feat: add generation pipeline with deterministic ordering"
 
 ---
 
-### Task 15: ZIP sink and the generate endpoint
+### Task 16: ZIP sink and the generate endpoint
 
 **Files:**
 - Create: `src/generator/sinks/zip.ts`, `src/app/api/generate/route.ts`
 - Test: `tests/sinks/zip.test.ts`, `tests/api/generate.test.ts`
 
 **Interfaces:**
-- Consumes: `Deliverable` (Task 12), `generate` (Task 14), `decodeConfig` (Task 3), `ConfigError` (Task 2)
+- Consumes: `Deliverable` (Task 13), `generate` (Task 15), `decodeConfig` (Task 3), `ConfigError` (Task 2)
 - Produces: `toZip(deliverables: Deliverable[], projectName: string): Uint8Array`; `GET /api/generate?c=<config>`
 
 - [ ] **Step 1: Write the failing tests**
@@ -3039,7 +3408,7 @@ import type { ProtosConfig } from '@/generator/config/types'
 
 const cfg: ProtosConfig = {
   v: 1, name: 'hrims', layout: 'siblings', pm: 'npm',
-  apps: [{ id: 'web', base: 'next', layers: ['tailwind'], options: {} }],
+  apps: [{ id: 'web', base: 'next', arch: 'type-based', layers: ['tailwind'], options: {} }],
   layers: [],
 }
 
@@ -3214,7 +3583,7 @@ console.log(
     name: 'hrims',
     layout: 'siblings',
     pm: 'npm',
-    apps: [{ id: 'web', base: 'next', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
+    apps: [{ id: 'web', base: 'next', arch: 'type-based', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
     layers: ['docker'],
   })
 )
@@ -3256,14 +3625,14 @@ git commit -m "feat: add zip sink, rate-limited generate endpoint, and encode sc
 
 ---
 
-### Task 16: Tier 2 — snapshot harness
+### Task 17: Tier 2 — snapshot harness
 
 **Files:**
 - Create: `tests/snapshots/manifest.ts`, `tests/snapshots/configs.ts`, `tests/snapshots/snapshot.test.ts`
 - Test: the above (this task's deliverable *is* tests)
 
 **Interfaces:**
-- Consumes: `generate` (Task 14), `ProtosConfig` (Task 2)
+- Consumes: `generate` (Task 15), `ProtosConfig` (Task 2)
 - Produces: `manifestOf(deliverables): string`, `CANONICAL_CONFIGS: { name: string; config: ProtosConfig }[]`
 
 Tier 2 catches what tier 1 structurally cannot: one layer breaking another. Reviewing the snapshot diff is how a layer change gets approved — an unexpected hash change in an unrelated file is the signal.
@@ -3294,7 +3663,7 @@ export function manifestOf(deliverables: Deliverable[]): string {
 
 Create `tests/snapshots/configs.ts`. Plan 1 implements one base and three layers, so only configs 1, 2, and 9 from the spec's matrix are expressible; Plan 2 fills in the rest.
 
-Config 2 runs **pnpm** and the other two run npm, matching the spec's rule that the package manager is covered by swapping rather than multiplying the matrix.
+Config 2 runs **pnpm** and the rest run npm; config 10 runs **feature-based** architecture and the rest run type-based. Both extra axes are covered by swapping rather than multiplying the matrix.
 
 ```ts
 import type { ProtosConfig } from '@/generator/config/types'
@@ -3304,7 +3673,7 @@ export const CANONICAL_CONFIGS: { name: string; config: ProtosConfig }[] = [
     name: '01-next-tailwind-siblings-npm',
     config: {
       v: 1, name: 'demo', layout: 'siblings', pm: 'npm',
-      apps: [{ id: 'web', base: 'next', layers: ['tailwind'], options: {} }],
+      apps: [{ id: 'web', base: 'next', arch: 'type-based', layers: ['tailwind'], options: {} }],
       layers: [],
     },
   },
@@ -3312,7 +3681,15 @@ export const CANONICAL_CONFIGS: { name: string; config: ProtosConfig }[] = [
     name: '02-next-prisma-postgres-docker-pnpm',
     config: {
       v: 1, name: 'demo', layout: 'siblings', pm: 'pnpm',
-      apps: [{ id: 'web', base: 'next', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
+      apps: [{ id: 'web', base: 'next', arch: 'type-based', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
+      layers: ['docker'],
+    },
+  },
+  {
+    name: '10-next-feature-based-npm',
+    config: {
+      v: 1, name: 'demo', layout: 'siblings', pm: 'npm',
+      apps: [{ id: 'web', base: 'next', arch: 'feature-based', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
       layers: ['docker'],
     },
   },
@@ -3320,7 +3697,7 @@ export const CANONICAL_CONFIGS: { name: string; config: ProtosConfig }[] = [
     name: '09-next-minimal-npm',
     config: {
       v: 1, name: 'demo', layout: 'siblings', pm: 'npm',
-      apps: [{ id: 'web', base: 'next', layers: [], options: {} }],
+      apps: [{ id: 'web', base: 'next', arch: 'type-based', layers: [], options: {} }],
       layers: [],
     },
   },
@@ -3344,6 +3721,15 @@ describe('canonical config snapshots', () => {
     })
   }
 
+  it('produces a different manifest for the same project under a different architecture', async () => {
+    const base = CANONICAL_CONFIGS[0].config
+    const asType = manifestOf(await generate(base))
+    const asFeature = manifestOf(
+      await generate({ ...base, apps: [{ ...base.apps[0], arch: 'feature-based' }] })
+    )
+    expect(asType).not.toBe(asFeature)
+  })
+
   it('produces a different manifest for the same project under a different package manager', async () => {
     const base = CANONICAL_CONFIGS[0].config
     const asNpm = manifestOf(await generate(base))
@@ -3364,7 +3750,7 @@ describe('canonical config snapshots', () => {
 - [ ] **Step 4: Record the snapshots**
 
 Run: `npm test -- tests/snapshots`
-Expected: PASS — 5 tests, with `tests/snapshots/__snapshots__/snapshot.test.ts.snap` newly written
+Expected: PASS — 7 tests, with `tests/snapshots/__snapshots__/snapshot.test.ts.snap` newly written
 
 - [ ] **Step 5: Read the recorded snapshot before trusting it**
 
@@ -3377,7 +3763,7 @@ Confirm by eye that `02-next-prisma-postgres-docker-pnpm` lists `Dockerfile`, `d
 - [ ] **Step 6: Verify the snapshot actually fails on a real regression**
 
 Temporarily change `GLOBALS_CSS` in `src/generator/layers/tailwind.ts` to `@import "tailwind";` and run `npm test -- tests/snapshots`.
-Expected: FAIL on configs 01 and 02, with unchanged hashes for 09.
+Expected: FAIL on configs 01, 02, and 10, with unchanged hashes for 09.
 Revert the change and confirm the tests pass again.
 
 - [ ] **Step 7: Commit**
@@ -3389,14 +3775,14 @@ git commit -m "test: add tier 2 snapshot harness over canonical configs"
 
 ---
 
-### Task 17: Tier 3 — smoke matrix and CI
+### Task 18: Tier 3 — smoke matrix and CI
 
 **Files:**
 - Create: `tests/smoke/smoke.test.ts`, `.github/workflows/ci.yml`, `.github/workflows/smoke.yml`
 - Modify: `vitest.config.ts` (exclude smoke from the default run)
 
 **Interfaces:**
-- Consumes: `generate` (Task 14), `CANONICAL_CONFIGS` (Task 16)
+- Consumes: `generate` (Task 15), `CANONICAL_CONFIGS` (Task 17)
 - Produces: `npm run smoke`; two CI workflows
 
 This is the tier that proves generated projects actually work. It writes real files to a temp directory, installs, builds, and lints them. It is slow by nature, so it runs nightly rather than on every push.
@@ -3465,7 +3851,7 @@ describe('smoke matrix', () => {
 - [ ] **Step 3: Run the smoke suite locally**
 
 Run: `npm run smoke`
-Expected: PASS for all 3 configs. This takes several minutes — each config runs a real install and `next build`. Config 02 installs with pnpm, so make sure pnpm is available locally (`corepack enable`).
+Expected: PASS for all 4 configs. This takes several minutes — each config runs a real install and `next build`. Config 02 installs with pnpm, so make sure pnpm is available locally (`corepack enable`).
 
 If a build fails, that is the point of this tier: fix the base or layer that produced broken output before continuing.
 
@@ -3545,7 +3931,8 @@ git commit -m "test: add tier 3 smoke matrix and CI workflows"
 ## Definition of done for Plan 1
 
 - [ ] `npm test` passes — tiers 1 and 2
-- [ ] `npm run smoke` passes — tier 3, all 3 configs install and build
+- [ ] `npm run smoke` passes — tier 3, all 4 configs install and build
+- [ ] Switching architecture visibly relocates generated files, and every architecture produces a working vertical slice — not empty folders
 - [ ] `npm run build` succeeds
 - [ ] `GET /api/generate?c=<config>` returns a ZIP whose contents unzip, `npm install`, and `npm run build` cleanly
 - [ ] The architecture test confirms `src/generator/` imports nothing from `next`
@@ -3562,6 +3949,7 @@ Plan 1 deliberately leaves these interfaces implemented once each so Plan 2 is r
 | `RootLayer` | `docker` | `gh-actions` |
 | `Assembler` | `siblings` | `separate`, `monorepo` |
 | `PackageManagerStrategy` | `npm`, `pnpm` | consumed by the monorepo assembler |
+| `ArchitectureStrategy` | `type-based`, `feature-based` | `layered`, `modular` (with the Express base) |
 | Sink | `zip` | `tar`, `github` (v2) |
 
 Plan 3 consumes the `manifest` field already present on every layer to render the live preview without shipping templates to the browser.
