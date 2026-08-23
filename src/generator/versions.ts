@@ -32,6 +32,7 @@ export const VERSIONS: Record<string, string> = {
   prisma: '^7.9.1',
   '@prisma/adapter-pg': '^7.9.1',
   '@prisma/adapter-mariadb': '^7.9.1',
+  dotenv: '^17.4.2',
 
   // validation + testing
   zod: '^4.4.3',

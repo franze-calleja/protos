@@ -118,3 +118,21 @@ describe('prisma layer', () => {
     expect(tree.readme.render('x')).toContain('pnpm db:migrate')
   })
 })
+
+describe('prisma 7 configuration', () => {
+  it('omits url from the datasource, which Prisma 7 rejects', () => {
+    const tree = new FileTree()
+    prismaLayer.apply(tree, ctx('postgres'))
+    expect(tree.read('prisma/schema.prisma')).not.toContain('url')
+  })
+
+  it('supplies the connection url through prisma.config.ts instead', () => {
+    const tree = new FileTree()
+    prismaLayer.apply(tree, ctx('postgres'))
+    const config = tree.read('prisma.config.ts')!
+    expect(config).toContain("env<Env>('DATABASE_URL')")
+    // Prisma 7 stopped auto-loading .env.
+    expect(config).toContain("import 'dotenv/config'")
+    expect(tree.pkg.render()).toContain('dotenv')
+  })
+})

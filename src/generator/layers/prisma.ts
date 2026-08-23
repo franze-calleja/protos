@@ -45,7 +45,6 @@ function schema(target: Target): string {
 
 datasource db {
   provider = "${target.provider}"
-  url      = env("DATABASE_URL")
 }
 
 model Example {
@@ -55,6 +54,29 @@ model Example {
 }
 `
 }
+
+/**
+ * Prisma 7 removed `url` from the datasource block; the CLI reads the
+ * connection string from here instead. It also no longer auto-loads .env,
+ * hence the explicit dotenv import.
+ */
+const PRISMA_CONFIG = `import 'dotenv/config'
+import { defineConfig, env } from 'prisma/config'
+
+type Env = {
+  DATABASE_URL: string
+}
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: {
+    path: 'prisma/migrations',
+  },
+  datasource: {
+    url: env<Env>('DATABASE_URL'),
+  },
+})
+`
 
 function client(target: Target): string {
   return `import { ${target.adapterClass} } from '${target.adapterPkg}'
@@ -75,7 +97,7 @@ export const prismaLayer: Layer = {
   label: 'Prisma ORM',
   description: 'Type-safe database access',
   appliesTo: ['next', 'express'],
-  manifest: (arch) => ['prisma/schema.prisma', arch.path('db-client')],
+  manifest: (arch) => ['prisma/schema.prisma', 'prisma.config.ts', arch.path('db-client')],
 
   apply(tree: FileTree, ctx: LayerCtx): void {
     const dbOption = ctx.app.options.db ?? 'postgres'
@@ -83,6 +105,7 @@ export const prismaLayer: Layer = {
     if (!target) throw new Error(`Unsupported db option "${dbOption}" for the prisma layer`)
 
     tree.write('prisma/schema.prisma', schema(target))
+    tree.write('prisma.config.ts', PRISMA_CONFIG)
     tree.write(ctx.arch.path('db-client'), client(target))
 
     tree.env.set('DATABASE_URL', target.url, {
@@ -93,6 +116,8 @@ export const prismaLayer: Layer = {
     tree.pkg.addDep('@prisma/client', dep('@prisma/client'))
     tree.pkg.addDep(target.adapterPkg, dep(target.adapterPkg))
     tree.pkg.addDevDep('prisma', dep('prisma'))
+    // Prisma 7's CLI does not load .env on its own.
+    tree.pkg.addDevDep('dotenv', dep('dotenv'))
     tree.pkg.addScript('db:migrate', 'prisma migrate dev')
     tree.pkg.addScript('db:studio', 'prisma studio')
     // The generated client is not committed, so it must exist after install.
