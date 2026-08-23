@@ -15,6 +15,8 @@ export interface PackageManagerStrategy {
   ciSetupSteps(): string
   /** Version range used for a workspace-internal dependency. */
   internalDep(): string
+  /** Files needed so the listed dependencies may run their install scripts. */
+  buildScriptFiles(packages: string[]): Record<string, string>
   /** Extra root files needed to declare a workspace. */
   workspaceFiles(appPaths: string[]): Record<string, string>
   /** Root package.json fields needed to declare a workspace. */

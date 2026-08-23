@@ -118,6 +118,7 @@ export const prismaLayer: Layer = {
     tree.pkg.addDevDep('prisma', dep('prisma'))
     // Prisma 7's CLI does not load .env on its own.
     tree.pkg.addDevDep('dotenv', dep('dotenv'))
+    tree.pkg.allowBuildScripts(['prisma', '@prisma/engines'])
     tree.pkg.addScript('db:migrate', 'prisma migrate dev')
     tree.pkg.addScript('db:studio', 'prisma studio')
     // The generated client is not committed, so it must exist after install.

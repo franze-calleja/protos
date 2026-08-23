@@ -97,3 +97,27 @@ describe('generate', () => {
     expect(performance.now() - start).toBeLessThan(300)
   })
 })
+
+describe('package manager build permissions', () => {
+  it('emits pnpm-workspace.yaml when a pnpm project needs prisma build scripts', async () => {
+    const [out] = await generate({ ...cfg, pm: 'pnpm' })
+    const yaml = out.files.get('hrims-web/pnpm-workspace.yaml')
+    expect(yaml).toContain('allowBuilds:')
+    expect(yaml).toContain('prisma')
+  })
+
+  it('emits no such file for npm, which needs no permission', async () => {
+    const [out] = await generate(cfg)
+    expect(out.files.has('hrims-web/pnpm-workspace.yaml')).toBe(false)
+  })
+
+  it('emits no such file for pnpm when no layer needs build scripts', async () => {
+    const [out] = await generate({
+      ...cfg,
+      pm: 'pnpm',
+      apps: [{ ...cfg.apps[0], layers: ['tailwind'] }],
+      layers: [],
+    })
+    expect(out.files.has('hrims-web/pnpm-workspace.yaml')).toBe(false)
+  })
+})

@@ -65,3 +65,21 @@ describe('getPackageManager', () => {
     expect(() => getPackageManager('yarn')).toThrow(/unknown package manager/i)
   })
 })
+
+describe('build script permissions', () => {
+  it('npm needs no file, since it runs install scripts by default', () => {
+    expect(getPackageManager('npm').buildScriptFiles(['prisma'])).toEqual({})
+  })
+
+  it('pnpm allows the listed packages in pnpm-workspace.yaml', () => {
+    const files = getPackageManager('pnpm').buildScriptFiles(['prisma', '@prisma/engines'])
+    const yaml = files['pnpm-workspace.yaml']
+    expect(yaml).toContain('allowBuilds:')
+    expect(yaml).toContain("'prisma': true")
+    expect(yaml).toContain("'@prisma/engines': true")
+  })
+
+  it('pnpm emits nothing when no dependency needs a build script', () => {
+    expect(getPackageManager('pnpm').buildScriptFiles([])).toEqual({})
+  })
+})

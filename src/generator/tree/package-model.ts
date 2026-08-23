@@ -4,6 +4,7 @@ export class PackageModel {
   private devDeps = new Map<string, string>()
   private scripts = new Map<string, string>()
   private extras: Record<string, unknown> = {}
+  private buildScripts = new Set<string>()
 
   setName(name: string): void {
     this.name = name
@@ -23,6 +24,18 @@ export class PackageModel {
       throw new Error(`Conflicting script "${name}": "${existing}" vs "${command}"`)
     }
     this.scripts.set(name, command)
+  }
+
+  /**
+   * Dependencies whose install scripts must be allowed to run. npm runs them by
+   * default; pnpm blocks them and fails the install unless told otherwise.
+   */
+  allowBuildScripts(names: string[]): void {
+    for (const name of names) this.buildScripts.add(name)
+  }
+
+  buildScriptPackages(): string[] {
+    return [...this.buildScripts].sort()
   }
 
   /** For top-level fields a base needs, e.g. `type: "module"`. */

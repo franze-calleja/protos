@@ -22,6 +22,7 @@ demo/demo-web/Dockerfile  ac2a399fccd9
 demo/demo-web/README.md  0f7f376c2b30
 demo/demo-web/next.config.ts  eb339f94d0df
 demo/demo-web/package.json  89b3d3fb5d31
+demo/demo-web/pnpm-workspace.yaml  3d82d7568f56
 demo/demo-web/postcss.config.mjs  a0247228772d
 demo/demo-web/prisma.config.ts  1c477516bcc2
 demo/demo-web/prisma/schema.prisma  1c9517ad3f9c

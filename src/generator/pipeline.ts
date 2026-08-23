@@ -51,7 +51,15 @@ export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
     layer.applyRoot(project, rootCtx)
   }
 
-  // 3. Render every composed file.
+  // 3. Materialise any package-manager files the selected layers require.
+  for (const app of apps) {
+    const needsBuild = app.tree.pkg.buildScriptPackages()
+    for (const [file, content] of Object.entries(pm.buildScriptFiles(needsBuild))) {
+      app.tree.write(file, content)
+    }
+  }
+
+  // 4. Render every composed file.
   for (const app of apps) {
     getBase(app.spec.base).renderComposed(app.tree, {
       app: app.spec,
@@ -62,7 +70,7 @@ export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
     })
   }
 
-  // 4. Place everything, then format.
+  // 5. Place everything, then format.
   const deliverables = assembler.assemble(apps, cfg, project.root)
   return Promise.all(deliverables.map(formatDeliverable))
 }
