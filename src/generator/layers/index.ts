@@ -8,5 +8,6 @@ import './helmet'
 import './rate-limit'
 import './eslint-prettier'
 import './docker'
+import './gh-actions'
 
 export {}
