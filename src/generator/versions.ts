@@ -23,6 +23,11 @@ export const VERSIONS: Record<string, string> = {
   '@types/react': '^19.2.18',
   '@types/react-dom': '^19.2.4',
 
+  // backend
+  express: '^5.2.1',
+  '@types/express': '^5.0.6',
+  tsx: '^4.23.12',
+
   // styling
   tailwindcss: '^4.3.3',
   '@tailwindcss/postcss': '^4.3.3',
