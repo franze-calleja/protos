@@ -8,13 +8,12 @@ const cfg: ProtosConfig = {
   pm: 'npm',
   apps: [
     {
-      id: 'api',
-      base: 'express',
-      arch: 'layered',
-      layers: ['prisma', 'pino'],
+      id: 'web',
+      base: 'next',
+      arch: 'type-based',
+      layers: ['tailwind', 'prisma'],
       options: { db: 'postgres' },
     },
-    { id: 'web', base: 'next', arch: 'type-based', layers: ['tailwind'], options: {} },
   ],
   layers: ['docker'],
 }
