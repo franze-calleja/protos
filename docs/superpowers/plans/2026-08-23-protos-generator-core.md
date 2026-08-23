@@ -10,6 +10,28 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-23-protos-design.md`
 
+> **Execution notes (2026-08-23).** This plan was executed and the code it
+> describes now exists. Six things in it turned out to be wrong when run
+> against real, current tooling — recorded here so they are not repeated:
+>
+> 1. **Task order.** `LayerCtx` consumes the package-manager and architecture
+>    strategies, so Tasks 9 and 10 must run *before* Task 8.
+> 2. **Prisma.** The v6 snippet here generates a project that cannot build.
+>    Prisma 7 needs the `prisma-client` generator, an explicit `output`, a
+>    driver adapter, no `url` in the datasource, a `prisma.config.ts`, and an
+>    explicit `dotenv` import. See spec §12a.
+> 3. **ZIP mtime.** `mtime: 0` is the 1970 epoch, outside the ZIP format's
+>    1980–2099 range — every generation threw. Use a fixed in-range date.
+> 4. **The architecture guard.** A regex over raw text false-positives on base
+>    templates that hold generated code in string literals. Use the TypeScript
+>    AST so only real import statements are seen.
+> 5. **A seventh model.** `SideEffectImportModel` was needed: the tailwind
+>    layer wrote `globals.css` that nothing imported, so Tailwind silently
+>    never applied.
+> 6. **Script runner.** Node's `--experimental-strip-types` needs explicit
+>    `.ts` extensions on relative imports; `vite-node` runs the scripts
+>    instead. Also, `npm test -- <path>` needs the `--`.
+
 ## Why this is Plan 1 of 3
 
 The v1 spec covers three independently testable subsystems. Splitting them keeps each plan reviewable and each milestone shippable:
