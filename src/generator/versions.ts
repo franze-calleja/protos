@@ -27,6 +27,7 @@ export const VERSIONS: Record<string, string> = {
   express: '^5.2.1',
   '@types/express': '^5.0.6',
   tsx: '^4.23.12',
+  turbo: '^2.10.11',
   pino: '^10.3.1',
   'pino-http': '^11.0.0',
   'pino-pretty': '^13.1.3',
