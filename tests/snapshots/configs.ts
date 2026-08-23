@@ -106,4 +106,52 @@ export const CANONICAL_CONFIGS: { name: string; config: ProtosConfig }[] = [
       layers: ['docker'],
     },
   },
+  {
+    name: '05-express-next-siblings-npm',
+    config: {
+      v: 1,
+      name: 'demo',
+      layout: 'siblings',
+      pm: 'npm',
+      apps: [
+        { id: 'api', base: 'express', arch: 'layered', layers: ['zod', 'pino'], options: {} },
+        { id: 'web', base: 'next', arch: 'type-based', layers: ['tailwind'], options: {} },
+      ],
+      layers: ['docker', 'gh-actions'],
+    },
+  },
+  {
+    name: '06-express-next-monorepo-pnpm',
+    config: {
+      v: 1,
+      name: 'demo',
+      layout: 'monorepo',
+      pm: 'pnpm',
+      apps: [
+        {
+          id: 'api',
+          base: 'express',
+          arch: 'modular',
+          layers: ['zod', 'prisma'],
+          options: { db: 'postgres' },
+        },
+        { id: 'web', base: 'next', arch: 'feature-based', layers: ['tailwind'], options: {} },
+      ],
+      layers: ['docker', 'gh-actions'],
+    },
+  },
+  {
+    name: '07-express-next-separate-npm',
+    config: {
+      v: 1,
+      name: 'demo',
+      layout: 'separate',
+      pm: 'npm',
+      apps: [
+        { id: 'api', base: 'express', arch: 'layered', layers: ['vitest'], options: {} },
+        { id: 'web', base: 'next', arch: 'type-based', layers: [], options: {} },
+      ],
+      layers: [],
+    },
+  },
 ]

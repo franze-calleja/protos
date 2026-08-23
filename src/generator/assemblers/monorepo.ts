@@ -142,7 +142,17 @@ export const monorepoAssembler: Assembler = {
       files.set('packages/types/src/index.ts', TYPES_INDEX)
     }
 
-    for (const [file, content] of Object.entries(pm.workspaceFiles(WORKSPACE_GLOBS))) {
+    // Workspace declaration and build permissions can target the same file
+    // (pnpm-workspace.yaml), and pnpm only reads the one at the root, so they
+    // are merged rather than overwriting each other.
+    const buildPackages = [
+      ...new Set(apps.flatMap((a) => a.tree.pkg.buildScriptPackages())),
+    ].sort()
+    const pmFiles: Record<string, string> = { ...pm.workspaceFiles(WORKSPACE_GLOBS) }
+    for (const [file, content] of Object.entries(pm.buildScriptFiles(buildPackages))) {
+      pmFiles[file] = pmFiles[file] ? `${pmFiles[file]}\n${content}` : content
+    }
+    for (const [file, content] of Object.entries(pmFiles)) {
       files.set(file, content)
     }
     files.set('turbo.json', TURBO_JSON)

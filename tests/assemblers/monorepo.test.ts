@@ -112,3 +112,42 @@ describe('shared types package', () => {
     expect(filesOf(solo).has('packages/types/package.json')).toBe(false)
   })
 })
+
+describe('package manager build permissions', () => {
+  const withPrisma: ProtosConfig = {
+    ...cfg,
+    pm: 'pnpm',
+    apps: [
+      { id: 'api', base: 'express', arch: 'layered', layers: ['prisma'], options: {} },
+      cfg.apps[1],
+    ],
+  }
+
+  function appsNeedingBuilds(): BuiltApp[] {
+    return withPrisma.apps.map((s, i) => {
+      const tree = new FileTree()
+      tree.write('src/index.ts', `// ${s.id}`)
+      tree.pkg.setName(`hrims-${s.id}`)
+      if (i === 0) tree.pkg.allowBuildScripts(['prisma', '@prisma/engines'])
+      tree.write('package.json', tree.pkg.render())
+      return { spec: s, tree, isServer: true }
+    })
+  }
+
+  it('merges build permissions into the single root workspace file', () => {
+    const files = monorepoAssembler.assemble(appsNeedingBuilds(), withPrisma, new FileTree())[0]
+      .files
+    const root = files.get('pnpm-workspace.yaml')!
+    expect(root).toContain('packages:')
+    expect(root).toContain('allowBuilds:')
+    expect(root).toContain("'prisma': true")
+  })
+
+  it('never writes a workspace file inside an app, which pnpm would ignore', () => {
+    const files = monorepoAssembler.assemble(appsNeedingBuilds(), withPrisma, new FileTree())[0]
+      .files
+    for (const key of files.keys()) {
+      expect(key.endsWith('pnpm-workspace.yaml') && key.includes('/')).toBe(false)
+    }
+  })
+})

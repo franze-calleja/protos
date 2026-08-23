@@ -10,6 +10,7 @@ import type {
 import type { PackageManagerStrategy } from '../pm/types'
 import type { FileTree } from '../tree/file-tree'
 import type { AppSpec, ProtosConfig } from '../config/types'
+import { getPackageManager } from '../pm'
 
 const dockerStrategy = (pm: PackageManagerStrategy): DockerStrategy => ({
   dockerfile(_app: BuiltApp): string {
@@ -91,11 +92,17 @@ export const siblingsAssembler: Assembler = {
   },
 
   assemble(apps: BuiltApp[], cfg: ProtosConfig, root: FileTree): Deliverable[] {
+    const pm = getPackageManager(cfg.pm)
     const files = new Map<string, string>(root.toMap())
     for (const app of apps) {
       const prefix = this.appPath(app.spec, cfg)
       for (const [path, content] of app.tree.toMap()) {
         files.set(`${prefix}/${path}`, content)
+      }
+      // Each app installs independently, so its build permissions sit beside it.
+      const pmFiles = pm.buildScriptFiles(app.tree.pkg.buildScriptPackages())
+      for (const [file, content] of Object.entries(pmFiles)) {
+        files.set(`${prefix}/${file}`, content)
       }
     }
     const sorted = new Map([...files.entries()].sort(([a], [b]) => a.localeCompare(b)))
