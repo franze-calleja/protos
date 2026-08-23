@@ -12,7 +12,24 @@
 
 **Predecessor:** `docs/superpowers/plans/2026-08-23-protos-generator-core.md` (executed; read its execution-notes header)
 
-**Status:** complete — 10 tasks, self-reviewed, ready to execute.
+**Status:** executed 2026-08-24.
+
+> **Execution notes.** Two things in this plan were wrong against real tooling:
+>
+> 1. **ESLint config for Next.** The plan specified a `FlatCompat` shim from
+>    `@eslint/eslintrc`. That is the Next 15 pattern — `eslint-config-next@16`
+>    ships native flat entry points (`eslint-config-next/core-web-vitals`,
+>    `eslint-config-next/typescript`). The authoritative answer was already in
+>    the repo: create-next-app 16 had written protos' own `eslint.config.mjs`.
+>    Check local generated output before reaching for docs.
+> 2. **Prisma adapter construction.** The layer passed
+>    `{ connectionString: … }`, extrapolated from `PrismaPg`. `PrismaMariaDb`
+>    takes a `mariadb.PoolConfig`, which has no such property, so config 03
+>    installed and then failed `tsc`. Every Prisma 7 adapter accepts a **bare
+>    connection string** — use that form. Tier 3 caught it; tiers 1 and 2 could
+>    not have.
+>
+> Both are the same mistake: generalising one library's API to its sibling.
 
 ## Where this sits
 
