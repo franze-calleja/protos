@@ -32,3 +32,11 @@ describe('tailwind layer', () => {
     for (const p of tree.paths()) expect(tailwindLayer.manifest(ctx.arch)).toContain(p)
   })
 })
+
+describe('tailwind stylesheet wiring', () => {
+  it('registers the stylesheet as a side-effect import so it is not dead code', () => {
+    const tree = new FileTree()
+    tailwindLayer.apply(tree, ctx)
+    expect(tree.sideEffects.list()).toContain('src/app/globals.css')
+  })
+})

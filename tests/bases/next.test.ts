@@ -97,3 +97,17 @@ describe('next base', () => {
     expect(tree.read('README.md')).toContain('pnpm dev')
   })
 })
+
+describe('next base side-effect imports', () => {
+  it('imports a registered stylesheet in the layout', () => {
+    const tree = new FileTree()
+    nextBase.init(tree, ctx)
+    tree.sideEffects.add('src/app/globals.css')
+    nextBase.renderComposed(tree, ctx)
+    expect(tree.read('src/app/layout.tsx')).toContain("import '@/app/globals.css'")
+  })
+
+  it('emits no stray import when nothing registered one', () => {
+    expect(build().read('src/app/layout.tsx')).not.toContain('.css')
+  })
+})

@@ -23,6 +23,8 @@ export const tailwindLayer: Layer = {
 
   apply(tree: FileTree, _ctx: LayerCtx): void {
     tree.write('src/app/globals.css', GLOBALS_CSS)
+    // Without this the stylesheet is dead code and Tailwind never applies.
+    tree.sideEffects.add('src/app/globals.css')
     tree.write('postcss.config.mjs', POSTCSS_CONFIG)
     tree.pkg.addDevDep('tailwindcss', dep('tailwindcss'))
     tree.pkg.addDevDep('@tailwindcss/postcss', dep('@tailwindcss/postcss'))

@@ -4,6 +4,7 @@ import { EnvModel } from './env-model'
 import { ReadmeModel } from './readme-model'
 import { ProviderModel } from './provider-model'
 import { MiddlewareModel } from './middleware-model'
+import { SideEffectImportModel } from './side-effect-model'
 
 export interface WriteOptions {
   /** Explicitly replace an existing file. Layers must not use this on another layer's file. */
@@ -18,6 +19,7 @@ export class FileTree {
   readonly readme = new ReadmeModel()
   readonly providers = new ProviderModel()
   readonly middleware = new MiddlewareModel()
+  readonly sideEffects = new SideEffectImportModel()
   readonly ignore = new IgnoreModel()
 
   write(rawPath: string, content: string, opts: WriteOptions = {}): void {

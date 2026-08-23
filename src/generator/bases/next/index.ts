@@ -76,7 +76,12 @@ export default function Home() {
 }
 
 function renderLayout(tree: FileTree): string {
-  return `${tree.providers.imports()}
+  const sideEffects = tree.sideEffects
+    .list()
+    .map((f) => `import '@/${f.replace(/^src\//, '')}'\n`)
+    .join('')
+
+  return `${sideEffects}${tree.providers.imports()}
 export const metadata = {
   title: 'App',
 }
