@@ -117,9 +117,12 @@ So **layers name roles, not paths**. `db-client`, `component`, `service`,
 | `service` | `src/services/x.service.ts` | `src/modules/x/x.service.ts` | — | — |
 
 An architecture throws on a role it has no home for, rather than inventing a
-path. Shared infrastructure stays in `src/lib` under every architecture:
-feature-based organisation applies to feature code, and burying the database
-client inside one feature would make it harder to find, not easier.
+path. Shared infrastructure stays in `src/lib` under both React-family
+architectures: feature-based organisation applies to feature code, and burying
+the database client inside one feature would make it harder to find, not
+easier. The modular Express architecture is the exception — it groups shared
+code under `src/shared`, which is that ecosystem's convention, and the role
+table above is authoritative.
 
 **How much choice exists depends on the framework.** Next.js and Expo impose
 file-based routing, so their only real axis is how non-route code is organised

@@ -63,7 +63,14 @@ describe('the two architectures differ where it matters', () => {
 })
 
 describe('getArchitecture', () => {
-  it('rejects an architecture with no implementation yet', () => {
-    expect(() => getArchitecture('layered')).toThrow(/not implemented/i)
+  it('returns each implemented architecture', () => {
+    for (const id of ['type-based', 'feature-based', 'layered', 'modular'] as const) {
+      expect(getArchitecture(id).id).toBe(id)
+    }
+  })
+
+  it('rejects an unknown architecture', () => {
+    // @ts-expect-error deliberately invalid id
+    expect(() => getArchitecture('hexagonal')).toThrow(/not implemented/i)
   })
 })
