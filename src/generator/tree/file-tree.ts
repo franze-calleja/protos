@@ -1,5 +1,7 @@
 import { IgnoreModel } from './ignore-model'
 import { PackageModel } from './package-model'
+import { EnvModel } from './env-model'
+import { ReadmeModel } from './readme-model'
 
 export interface WriteOptions {
   /** Explicitly replace an existing file. Layers must not use this on another layer's file. */
@@ -10,6 +12,8 @@ export class FileTree {
   private files = new Map<string, string>()
 
   readonly pkg = new PackageModel()
+  readonly env = new EnvModel()
+  readonly readme = new ReadmeModel()
   readonly ignore = new IgnoreModel()
 
   write(rawPath: string, content: string, opts: WriteOptions = {}): void {
