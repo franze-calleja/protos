@@ -2,6 +2,7 @@
 import './tailwind'
 import './prisma'
 import './vitest'
+import './zod'
 import './docker'
 
 export {}
