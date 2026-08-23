@@ -4,6 +4,8 @@ import './prisma'
 import './vitest'
 import './zod'
 import './pino'
+import './helmet'
+import './rate-limit'
 import './docker'
 
 export {}

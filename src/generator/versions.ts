@@ -30,6 +30,8 @@ export const VERSIONS: Record<string, string> = {
   pino: '^10.3.1',
   'pino-http': '^11.0.0',
   'pino-pretty': '^13.1.3',
+  helmet: '^8.3.0',
+  'express-rate-limit': '^8.6.2',
 
   // styling
   tailwindcss: '^4.3.3',
