@@ -522,6 +522,12 @@ the only one exercising `workspace:*` and `pnpm-workspace.yaml` together.
 Layout is the third axis, and configs 4–6 exist specifically to cover it. This
 is a curated set, not a cross-product; a full matrix would be unusable.
 
+**Known gap: generated Dockerfiles are not built in CI.** Tier 3 runs install
+and build, not `docker build`, so a broken Dockerfile ships undetected. They
+are verified by hand when the Docker strategy changes. Automating one
+`docker build` per layout in the nightly job is the obvious fix and is not yet
+done.
+
 Tier 3 is what catches "Next 16 shipped and our base template no longer
 builds." Without it protos becomes exactly the rotting boilerplate repo it
 exists to replace.
