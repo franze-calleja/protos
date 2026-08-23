@@ -50,6 +50,44 @@ export const CANONICAL_CONFIGS: { name: string; config: ProtosConfig }[] = [
     },
   },
   {
+    name: '03-express-prisma-mysql-layered-npm',
+    config: {
+      v: 1,
+      name: 'demo',
+      layout: 'siblings',
+      pm: 'npm',
+      apps: [
+        {
+          id: 'api',
+          base: 'express',
+          arch: 'layered',
+          layers: ['prisma', 'pino', 'helmet', 'rate-limit', 'zod', 'vitest'],
+          options: { db: 'mysql' },
+        },
+      ],
+      layers: ['docker', 'gh-actions'],
+    },
+  },
+  {
+    name: '04-express-modular-npm',
+    config: {
+      v: 1,
+      name: 'demo',
+      layout: 'siblings',
+      pm: 'npm',
+      apps: [
+        {
+          id: 'api',
+          base: 'express',
+          arch: 'modular',
+          layers: ['zod', 'vitest', 'eslint-prettier', 'pino'],
+          options: {},
+        },
+      ],
+      layers: ['gh-actions'],
+    },
+  },
+  {
     name: '10-next-feature-based-npm',
     config: {
       v: 1,
