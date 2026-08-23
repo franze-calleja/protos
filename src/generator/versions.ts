@@ -27,9 +27,11 @@ export const VERSIONS: Record<string, string> = {
   tailwindcss: '^4.3.3',
   '@tailwindcss/postcss': '^4.3.3',
 
-  // data
+  // data — Prisma 7 requires a driver adapter alongside the client
   '@prisma/client': '^7.9.1',
   prisma: '^7.9.1',
+  '@prisma/adapter-pg': '^7.9.1',
+  '@prisma/adapter-mariadb': '^7.9.1',
 
   // validation + testing
   zod: '^4.4.3',
