@@ -23,7 +23,10 @@ export interface Layer {
   appliesTo: BaseId[]
   requires?: LayerId[]
   conflictsWith?: LayerId[]
-  /** Paths this layer contributes under a given architecture, for the UI's preview. */
-  manifest(arch: ArchitectureStrategy): string[]
+  /**
+   * Paths this layer contributes, for the UI's preview. Asserted in tests.
+   * Takes the base too, because a layer's output can differ per ecosystem.
+   */
+  manifest(arch: ArchitectureStrategy, base: BaseId): string[]
   apply(tree: FileTree, ctx: LayerCtx): void
 }

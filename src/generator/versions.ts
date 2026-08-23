@@ -42,6 +42,8 @@ export const VERSIONS: Record<string, string> = {
   // validation + testing
   zod: '^4.4.3',
   vitest: '^4.1.11',
+  supertest: '^7.2.2',
+  '@types/supertest': '^7.2.1',
 }
 
 export function dep(name: string): string {

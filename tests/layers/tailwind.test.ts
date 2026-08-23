@@ -31,7 +31,7 @@ describe('tailwind layer', () => {
   it('declares every path it writes in its manifest', () => {
     const tree = new FileTree()
     tailwindLayer.apply(tree, ctx)
-    for (const p of tree.paths()) expect(tailwindLayer.manifest(ctx.arch)).toContain(p)
+    for (const p of tree.paths()) expect(tailwindLayer.manifest(ctx.arch, ctx.app.base)).toContain(p)
   })
 })
 

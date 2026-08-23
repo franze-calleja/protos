@@ -105,7 +105,7 @@ describe('prisma layer', () => {
     const tree = new FileTree()
     const c = ctx('postgres')
     prismaLayer.apply(tree, c)
-    for (const p of tree.paths()) expect(prismaLayer.manifest(c.arch)).toContain(p)
+    for (const p of tree.paths()) expect(prismaLayer.manifest(c.arch, c.app.base)).toContain(p)
   })
 
   it('documents itself using the selected package manager', () => {
