@@ -231,6 +231,13 @@ layer has run.
 | `providers` | `push({ import, component, props })` | `app/layout.tsx` |
 | `middleware` | `push({ import, expr, order })` | `src/server.ts` |
 | `ignore` | `add(pattern)` | `.gitignore`, `.dockerignore` |
+| `sideEffects` | `add(path)` | side-effect imports in the layout |
+
+`sideEffects` was added during implementation: the `tailwind` layer wrote
+`globals.css` but nothing imported it, so the stylesheet was dead code and
+Tailwind silently never applied — a bug an install-and-build smoke test passes
+straight through. A layer cannot patch the base's `layout.tsx`, so the layer
+registers the file and the base decides where the import statement goes.
 
 This is why `tanstack-query` and a theme provider can both wrap the root layout
 without either knowing the other exists, and why layer execution order does not
@@ -565,6 +572,39 @@ protos/
 `src/generator/` importing nothing from Next is a hard rule. It keeps the
 engine testable in isolation and leaves the door open to extracting it as a
 package if a future CLI ever needs to run offline.
+
+## 12a. Verified version realities
+
+Implementation checked every version against the registry and current docs
+rather than trusting training data. Four findings changed the design:
+
+| Package | Decision | Why |
+|---|---|---|
+| Next.js | `^16.3.2` | Latest stable major; mature well past x.1 |
+| TypeScript | `^5.9.3` for generated projects | 6.0 and 7.0 are both live but still at x.0. The dependency policy avoids day-one majors, and create-next-app itself still installs ^5 |
+| `@types/node` | `^24` | Tracks Node **LTS**, not Current (26) |
+| Prisma | `^7.9.1`, with driver adapters | See below |
+| Zod | `^4` | `.superRefine()` must precede `.transform()`; refinements live inside schemas in v4 |
+
+**Prisma 7 differs from 6 in four ways that all matter to a generator:**
+
+1. The generator is `prisma-client`, not the removed `prisma-client-js`.
+2. It needs an explicit `output`, and the client is imported from that path
+   rather than from `@prisma/client`.
+3. A driver adapter is **required** — `@prisma/adapter-pg` for Postgres,
+   `@prisma/adapter-mariadb` for MySQL.
+4. `url` is no longer permitted in the `datasource` block; it moves to
+   `prisma.config.ts`. The CLI also no longer auto-loads `.env`, so that file
+   needs an explicit `dotenv` import.
+
+Any one of these produces a project that installs but cannot build. They were
+caught by tier 3, not by tiers 1 or 2 — which is the argument for tier 3 in
+miniature.
+
+**The generated `tsconfig.json` mirrors create-next-app's output exactly**
+(`target: ES2017`, `jsx: react-jsx`, and the `.next/dev/types` include). Any
+drift makes Next rewrite the file on first build, which is a poor first
+impression from a scaffolding tool.
 
 ## 13. Sequencing
 
