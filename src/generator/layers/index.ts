@@ -3,6 +3,7 @@ import './tailwind'
 import './prisma'
 import './vitest'
 import './zod'
+import './pino'
 import './docker'
 
 export {}

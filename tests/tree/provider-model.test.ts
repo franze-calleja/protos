@@ -71,3 +71,12 @@ describe('MiddlewareModel', () => {
     expect(m.imports()).toBe('')
   })
 })
+
+describe('MiddlewareModel import-only entries', () => {
+  it('contributes an import without an app.use call when importOnly is set', () => {
+    const m = new MiddlewareModel()
+    m.push({ expr: '', importName: '{ logger }', importFrom: './logger', order: 1, importOnly: true })
+    expect(m.imports()).toContain('{ logger }')
+    expect(m.statements()).toBe('')
+  })
+})

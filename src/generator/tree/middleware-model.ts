@@ -1,9 +1,12 @@
 export interface MiddlewareEntry {
-  /** The expression passed to app.use(), e.g. `helmet()`. */
+  /** The expression passed to app.use(), e.g. `helmet()`. Empty when importOnly. */
   expr: string
+  /** The binding exactly as it appears after `import` — use `{ name }` for a named import. */
   importName?: string
   importFrom?: string
   order: number
+  /** Contribute the import but no app.use() call. */
+  importOnly?: boolean
 }
 
 export class MiddlewareModel {
@@ -23,6 +26,7 @@ export class MiddlewareModel {
 
   statements(): string {
     return [...this.entries]
+      .filter((e) => !e.importOnly)
       .sort((a, b) => a.order - b.order)
       .map((e) => `app.use(${e.expr})\n`)
       .join('')
