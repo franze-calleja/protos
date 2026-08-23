@@ -33,6 +33,13 @@ export const VERSIONS: Record<string, string> = {
   helmet: '^8.3.0',
   'express-rate-limit': '^8.6.2',
 
+  // linting — eslint-config-next tracks the Next major
+  eslint: '^10.9.0',
+  prettier: '^3.9.6',
+  'typescript-eslint': '^8.67.0',
+  '@eslint/js': '^10.0.1',
+  'eslint-config-next': '^16.3.2',
+
   // styling
   tailwindcss: '^4.3.3',
   '@tailwindcss/postcss': '^4.3.3',

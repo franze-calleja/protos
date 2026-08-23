@@ -6,6 +6,7 @@ import './zod'
 import './pino'
 import './helmet'
 import './rate-limit'
+import './eslint-prettier'
 import './docker'
 
 export {}
