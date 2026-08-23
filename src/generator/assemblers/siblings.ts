@@ -15,7 +15,9 @@ const dockerStrategy = (pm: PackageManagerStrategy): DockerStrategy => ({
   dockerfile(_app: BuiltApp): string {
     const setup = pm.dockerSetup()
     return [
-      'FROM node:24-alpine AS base',
+      // lts-alpine rather than a pinned major: a scaffold should start on
+      // current LTS, and the user pins it once they care about reproducibility.
+      'FROM node:lts-alpine AS base',
       ...(setup ? [setup] : []),
       '',
       'FROM base AS deps',

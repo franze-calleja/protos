@@ -90,3 +90,13 @@ describe('siblings assembler', () => {
     expect(wf).toContain('pnpm/action-setup')
   })
 })
+
+describe('generated Dockerfile base image', () => {
+  it('tracks Node LTS rather than pinning a major that will go stale', () => {
+    const df = siblingsAssembler
+      .dockerStrategy(getPackageManager('npm'))
+      .dockerfile(apps()[0], 'hrims-api')
+    expect(df).toContain('FROM node:lts-alpine')
+    expect(df).not.toMatch(/FROM node:\d+-alpine/)
+  })
+})

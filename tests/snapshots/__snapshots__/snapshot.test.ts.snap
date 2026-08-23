@@ -18,7 +18,7 @@ exports[`canonical config snapshots > matches the recorded manifest for 02-next-
 demo/demo-web/.env  388021020131
 demo/demo-web/.env.example  6d7547d359d5
 demo/demo-web/.gitignore  e794b616b5a7
-demo/demo-web/Dockerfile  ac2a399fccd9
+demo/demo-web/Dockerfile  a13babd10e78
 demo/demo-web/README.md  0f7f376c2b30
 demo/demo-web/next.config.ts  eb339f94d0df
 demo/demo-web/package.json  89b3d3fb5d31
@@ -51,7 +51,7 @@ exports[`canonical config snapshots > matches the recorded manifest for 10-next-
 demo/demo-web/.env  388021020131
 demo/demo-web/.env.example  6d7547d359d5
 demo/demo-web/.gitignore  e794b616b5a7
-demo/demo-web/Dockerfile  79b07abf9f8c
+demo/demo-web/Dockerfile  bdedb3cb347b
 demo/demo-web/README.md  a23da4889c26
 demo/demo-web/next.config.ts  eb339f94d0df
 demo/demo-web/package.json  89b3d3fb5d31
