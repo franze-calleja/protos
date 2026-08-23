@@ -66,7 +66,39 @@ contribute files and structured edits. ~4 bases and ~15 layers express
 thousands of valid projects. Whole-template approaches multiply with every new
 option and cannot be maintained.
 
-### 3.4 No code execution during generation
+### 3.4 Package manager is a strategy, not a layer
+
+Layers are additive — they contribute files. The package manager adds nothing;
+it changes how artifacts that already exist are rendered. That makes it a
+strategy, supplied to layers and assemblers the same way `DockerStrategy` is.
+
+It is not cosmetic. npm workspaces declare a local dependency with a plain
+semver range and symlink it automatically; the `workspace:*` protocol is
+pnpm-only. The workspace declaration differs too — a `workspaces` field in the
+root `package.json` versus a separate `pnpm-workspace.yaml`.
+
+| Artifact | npm | pnpm |
+|---|---|---|
+| README commands | `npm run dev` | `pnpm dev` |
+| Docker install | `npm install` | `corepack enable` + `pnpm install` |
+| Lockfile | `package-lock.json` | `pnpm-lock.yaml` |
+| CI setup | `setup-node` cache: npm | `pnpm/action-setup` + cache: pnpm |
+| Monorepo declaration | `workspaces` field | `pnpm-workspace.yaml` |
+| Internal dep | `"@app/types": "*"` | `"@app/types": "workspace:*"` |
+
+**Generated projects use plain installs, never frozen ones.** protos cannot
+produce a lockfile — that would mean running the package manager, which §3.5
+forbids — so a generated `Dockerfile` or CI job using `npm ci` or
+`pnpm install --frozen-lockfile` would fail on its first run. The README tells
+the user to commit a lockfile after their first install. Reproducibility is
+theirs to opt into; a scaffold that cannot build is not.
+
+v1 supports npm (default) and pnpm. yarn and bun are deliberately excluded:
+yarn's classic/berry split is two strategies wearing one name, and bun moves
+fast enough that generated projects would rot between smoke runs. Both are
+drop-in strategy files if that changes.
+
+### 3.5 No code execution during generation
 
 protos never shells out, never runs `create-next-app`, never executes user
 input. Generation is pure in-memory data transformation. This rules out an
@@ -84,6 +116,7 @@ type LayerId  = 'tailwind' | 'tanstack-query' | 'zustand' | 'zod'
               | 'pino' | 'helmet' | 'rate-limit'
               | 'eslint-prettier' | 'vitest' | 'docker' | 'gh-actions'
 type LayoutId = 'siblings' | 'separate' | 'monorepo'
+type PmId     = 'npm' | 'pnpm'
 
 type AppSpec = {
   id: string                        // 'api' | 'web' | 'mobile'
@@ -96,6 +129,7 @@ type ProtosConfig = {
   v: 1                              // schema version, for forward compat
   name: string                      // ^[a-z0-9][a-z0-9-]{0,38}$
   layout: LayoutId
+  pm: PmId                          // default 'npm'
   apps: AppSpec[]                   // 1–2 apps
   layers: LayerId[]                 // root-level: docker, gh-actions
 }
@@ -179,15 +213,15 @@ interface Layer {
 interface Ctx {
   app: AppSpec
   project: { name: string; layout: LayoutId }
-  docker: DockerStrategy             // supplied by the Assembler
-  ci: CiStrategy                     // supplied by the Assembler
+  pm: PackageManagerStrategy         // derived from cfg.pm
   sibling?: AppSpec                  // the other app, if any
 }
 ```
 
-Layers receive layout-dependent behaviour through `ctx.docker` and `ctx.ci`
-rather than branching on `ctx.project.layout` themselves. Nothing else in a
-layer is layout-aware.
+Layers never receive `DockerStrategy` or `CiStrategy` — those belong to root
+layers (below), which is what keeps per-app layers layout-agnostic by
+construction rather than by convention. They do receive `ctx.pm`, because a
+layer that documents a command in the README needs to name the right one.
 
 #### Root-level layers
 
@@ -237,10 +271,10 @@ type Deliverable = { name: string; tree: Map<string, string> }
 |---|---|---|---|
 | Placement | `hrims-backend/` | own deliverable each | `apps/api/` |
 | Deliverables | 1 | N | 1 |
-| Root files | README, `docker-compose.yml`, `.gitignore` | none | + `pnpm-workspace.yaml`, `turbo.json`, root `package.json` |
+| Root files | README, `docker-compose.yml`, `.gitignore` | none | + workspace declaration, `turbo.json`, root `package.json` |
 | Package names | plain | plain | scoped `@hrims/api` |
 | devDeps | per app | per app | hoisted to root |
-| Shared types | none | none | `packages/types`, `workspace:*` |
+| Shared types | none | none | `packages/types`, via `pm.internalDep()` |
 | Dockerfile | plain multi-stage | plain multi-stage | `turbo prune` multi-stage |
 | CI | per-app jobs | per-app jobs | single install + turbo cache |
 
@@ -249,8 +283,11 @@ type Deliverable = { name: string; tree: Map<string, string> }
 keeps the `prisma` layer completely layout-agnostic. Revisit only if a real
 need for a shared schema appears.
 
-**Monorepo is opinionated:** pnpm workspaces + Turborepo. No npm or yarn
-workspace variants — one well-tested path rather than a matrix.
+**Monorepo uses Turborepo** over whichever package manager's workspaces the
+config selected. Turborepo is package-manager agnostic; the workspace
+declaration and internal dependency protocol come from
+`PackageManagerStrategy` (§3.4), so the assembler never branches on the
+package manager itself.
 
 **`packages/types`** is emitted by the monorepo assembler only when a project
 contains both a backend and a frontend. It holds shared request/response types
@@ -416,6 +453,10 @@ Roughly 10 representative configs are generated for real, then
 9. `next` minimal (base only, no layers)
 10. maximal config — every compatible layer on a two-app monorepo
 
+Package manager is a fourth axis, covered by swapping rather than multiplying:
+configs 2 and 5 run **pnpm**, the rest run npm. Config 5 matters most — it is
+the only one exercising `workspace:*` and `pnpm-workspace.yaml` together.
+
 Layout is the third axis, and configs 4–6 exist specifically to cover it. This
 is a curated set, not a cross-product; a full matrix would be unusable.
 
@@ -431,6 +472,7 @@ Detected from nothing — this is a greenfield repo, so defaults apply.
 |---|---|---|
 | Framework | Next.js (App Router, TypeScript) | UI plus the streaming generate endpoints in one deploy |
 | Runtime | Node LTS | per dependency policy |
+| Package manager | npm | protos is a single app with no workspaces; nothing here needs pnpm |
 | Styling | Tailwind | |
 | Client state | Zustand | the config *is* client state |
 | Server state | none | there is nothing to fetch; TanStack Query would be unused |
@@ -439,6 +481,9 @@ Detected from nothing — this is a greenfield repo, so defaults apply.
 | Formatting | Prettier, applied to generated output | |
 | Tests | Vitest | |
 | Hosting | Vercel | |
+
+protos using npm is independent of what it generates. CI installs pnpm as a
+tool so the smoke tier can build generated pnpm projects.
 
 Exact versions are resolved at implementation time against current docs
 (latest stable for libraries, LTS for the runtime), not pinned here.

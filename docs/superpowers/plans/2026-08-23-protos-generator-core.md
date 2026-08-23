@@ -6,7 +6,7 @@
 
 **Architecture:** A pure, in-memory generator. A config object (validated by Zod, encoded in a URL) is fed through per-app *layers* that mutate a `FileTree`. Files touched by more than one layer are never string-patched — they are structured models rendered once at the end. An `Assembler` then places app trees into a deliverable and emits root files. Nothing shells out; nothing is persisted.
 
-**Tech Stack:** Next.js 16.2.x (App Router, TypeScript), Node LTS, pnpm, Zod, fflate, Prettier, Vitest.
+**Tech Stack:** Next.js 16.2.x (App Router, TypeScript), Node LTS, npm, Zod, fflate, Prettier, Vitest.
 
 **Spec:** `docs/superpowers/specs/2026-08-23-protos-design.md`
 
@@ -16,7 +16,7 @@ The v1 spec covers three independently testable subsystems. Splitting them keeps
 
 | Plan | Scope | Deliverable |
 |---|---|---|
-| **1 — Generator Core (this plan)** | Config, encoding, FileTree + all 6 models, layer/assembler/root-layer contracts, `next` base, 2 layers, siblings assembler, docker root layer, ZIP sink, API route, test tiers 1–3 | A URL that downloads a working Next.js project |
+| **1 — Generator Core (this plan)** | Config, encoding, FileTree + all 6 models, layer/assembler/root-layer/package-manager contracts, `next` base, 2 layers, siblings assembler, docker root layer, ZIP sink, API route, test tiers 1–3 | A URL that downloads a working Next.js project |
 | **2 — Catalog** | Remaining 3 bases, remaining 13 layers, `separate` + `monorepo` assemblers, full 10-config smoke matrix | Full stack coverage |
 | **3 — Web UI** | Two-column config UI, live path-manifest preview, URL sync, share links | The product |
 
@@ -35,8 +35,8 @@ Every task's requirements implicitly include these. Values are copied verbatim f
 - **Caps:** max 2 apps, max 25 layers, max 4096 bytes of encoded config.
 - **Unknown ids are rejected, never ignored.** A malformed link must fail loudly.
 - **Target:** generation completes in under 300ms server-side.
-- **Runtime:** Node LTS. **Package manager:** pnpm. **Framework:** Next.js 16.2.x.
-- **Never fabricate dependency versions.** All generated-project versions live in `src/generator/versions.ts` and are resolved with `pnpm view <pkg> version` at implementation time.
+- **Runtime:** Node LTS. **Package manager:** npm (protos has no workspaces; nothing here needs pnpm). **Framework:** Next.js 16.2.x.
+- **Never fabricate dependency versions.** All generated-project versions live in `src/generator/versions.ts` and are resolved with `npm view <pkg> version` at implementation time.
 
 ## File Structure
 
@@ -46,8 +46,13 @@ src/
     api/generate/route.ts       # ZIP endpoint (the only Next-aware file in the pipeline)
   generator/
     versions.ts                 # single source of dependency versions for generated projects
+    pm/
+      types.ts                  # PackageManagerStrategy
+      npm.ts                    # default
+      pnpm.ts
+      index.ts                  # getPackageManager()
     config/
-      types.ts                  # BaseId, LayerId, LayoutId, AppSpec, ProtosConfig
+      types.ts                  # BaseId, LayerId, LayoutId, PmId, AppSpec, ProtosConfig
       schema.ts                 # Zod schema + caps
       codec.ts                  # encode / decode / migrate
       errors.ts                 # ConfigError
@@ -76,6 +81,7 @@ src/
       zip.ts
     pipeline.ts                 # generate(cfg) -> Deliverable[]
 tests/
+  pm/                           # tier 1
   layers/                       # tier 1
   snapshots/                    # tier 2 (+ __snapshots__/)
   smoke/                        # tier 3 driver
@@ -96,12 +102,12 @@ Each model is its own file because they are edited independently and change for 
 
 **Interfaces:**
 - Consumes: nothing
-- Produces: a working `pnpm test` / `pnpm build`; the architecture guard every later task relies on
+- Produces: a working `npm test` / `npm run build`; the architecture guard every later task relies on
 
 - [ ] **Step 1: Scaffold the Next app**
 
 ```bash
-pnpm dlx create-next-app@latest . --ts --app --src-dir --tailwind --eslint --no-import-alias --use-pnpm
+npx create-next-app@latest . --ts --app --src-dir --tailwind --eslint --no-import-alias --use-npm
 ```
 
 Answer "yes" to overwriting only if prompted about the existing directory — `docs/` and `.git/` must survive. Verify afterwards with `ls docs/superpowers/specs/` and `git status`.
@@ -109,8 +115,8 @@ Answer "yes" to overwriting only if prompted about the existing directory — `d
 - [ ] **Step 2: Add dev dependencies**
 
 ```bash
-pnpm add -D vitest @vitest/coverage-v8 prettier
-pnpm add zod fflate
+npm install -D vitest @vitest/coverage-v8 prettier
+npm install zod fflate
 ```
 
 - [ ] **Step 3: Configure Vitest**
@@ -175,7 +181,7 @@ describe('generator isolation', () => {
 
 - [ ] **Step 5: Run it and watch it fail**
 
-Run: `pnpm test tests/architecture.test.ts`
+Run: `npm test -- tests/architecture.test.ts`
 Expected: FAIL — `ENOENT: no such file or directory, scandir 'src/generator'`
 
 - [ ] **Step 6: Create the generator directory with a placeholder module**
@@ -191,19 +197,19 @@ Create `src/generator/versions.ts`:
 /**
  * Single source of truth for dependency versions in GENERATED projects.
  * Bumping a generated project's dependency is a one-file change.
- * Resolve real values with: pnpm view <pkg> version
+ * Resolve real values with: npm view <pkg> version
  */
 export const VERSIONS: Record<string, string> = {}
 ```
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `pnpm test tests/architecture.test.ts`
+Run: `npm test -- tests/architecture.test.ts`
 Expected: PASS (2 tests)
 
 - [ ] **Step 8: Verify the build works**
 
-Run: `pnpm build`
+Run: `npm run build`
 Expected: build completes with no errors
 
 - [ ] **Step 9: Commit**
@@ -273,12 +279,24 @@ describe('parseConfig', () => {
   it('rejects an empty apps array', () => {
     expect(() => parseConfig({ ...valid, apps: [] })).toThrow(ConfigError)
   })
+
+  it('defaults the package manager to npm', () => {
+    expect(parseConfig(valid).pm).toBe('npm')
+  })
+
+  it('accepts pnpm', () => {
+    expect(parseConfig({ ...valid, pm: 'pnpm' }).pm).toBe('pnpm')
+  })
+
+  it('rejects an unsupported package manager', () => {
+    expect(() => parseConfig({ ...valid, pm: 'yarn' })).toThrow(ConfigError)
+  })
 })
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/config/schema.test.ts`
+Run: `npm test -- tests/config/schema.test.ts`
 Expected: FAIL — cannot resolve `@/generator/config/schema`
 
 - [ ] **Step 3: Write the implementation**
@@ -310,6 +328,9 @@ export type LayerId = (typeof LAYER_IDS)[number]
 export const LAYOUT_IDS = ['siblings', 'separate', 'monorepo'] as const
 export type LayoutId = (typeof LAYOUT_IDS)[number]
 
+export const PM_IDS = ['npm', 'pnpm'] as const
+export type PmId = (typeof PM_IDS)[number]
+
 export interface AppSpec {
   id: string
   base: BaseId
@@ -321,6 +342,7 @@ export interface ProtosConfig {
   v: 1
   name: string
   layout: LayoutId
+  pm: PmId
   apps: AppSpec[]
   layers: LayerId[]
 }
@@ -335,7 +357,7 @@ Create `src/generator/config/schema.ts`:
 
 ```ts
 import { z } from 'zod'
-import { BASE_IDS, LAYER_IDS, LAYOUT_IDS, NAME_PATTERN, MAX_APPS, MAX_LAYERS } from './types'
+import { BASE_IDS, LAYER_IDS, LAYOUT_IDS, PM_IDS, NAME_PATTERN, MAX_APPS, MAX_LAYERS } from './types'
 import type { ProtosConfig } from './types'
 import { ConfigError } from './errors'
 
@@ -350,6 +372,7 @@ export const configSchema = z.object({
   v: z.literal(1),
   name: z.string().regex(NAME_PATTERN),
   layout: z.enum(LAYOUT_IDS),
+  pm: z.enum(PM_IDS).default('npm'),
   apps: z.array(appSchema).min(1).max(MAX_APPS),
   layers: z.array(z.enum(LAYER_IDS)).max(MAX_LAYERS).default([]),
 })
@@ -365,8 +388,8 @@ export function parseConfig(input: unknown): ProtosConfig {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm test tests/config/schema.test.ts`
-Expected: PASS (7 tests)
+Run: `npm test -- tests/config/schema.test.ts`
+Expected: PASS (10 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -401,6 +424,7 @@ const cfg: ProtosConfig = {
   v: 1,
   name: 'hrims',
   layout: 'siblings',
+  pm: 'pnpm',
   apps: [
     { id: 'api', base: 'express', layers: ['prisma', 'pino'], options: { db: 'postgres' } },
     { id: 'web', base: 'next', layers: ['tailwind'], options: {} },
@@ -447,7 +471,7 @@ describe('config codec', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/config/codec.test.ts`
+Run: `npm test -- tests/config/codec.test.ts`
 Expected: FAIL — cannot resolve `@/generator/config/codec`
 
 - [ ] **Step 3: Write the implementation**
@@ -514,7 +538,7 @@ function migrate(raw: unknown): unknown {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm test tests/config/codec.test.ts`
+Run: `npm test -- tests/config/codec.test.ts`
 Expected: PASS (8 tests)
 
 - [ ] **Step 5: Commit**
@@ -599,7 +623,7 @@ describe('IgnoreModel', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/tree/file-tree.test.ts`
+Run: `npm test -- tests/tree/file-tree.test.ts`
 Expected: FAIL — cannot resolve `@/generator/tree/file-tree`
 
 - [ ] **Step 3: Write the implementation**
@@ -673,7 +697,7 @@ function normalise(path: string): string {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm test tests/tree/file-tree.test.ts`
+Run: `npm test -- tests/tree/file-tree.test.ts`
 Expected: PASS (7 tests)
 
 - [ ] **Step 5: Commit**
@@ -758,7 +782,7 @@ describe('PackageModel', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/tree/package-model.test.ts`
+Run: `npm test -- tests/tree/package-model.test.ts`
 Expected: FAIL — cannot resolve `@/generator/tree/package-model`
 
 - [ ] **Step 3: Write the implementation**
@@ -843,7 +867,7 @@ Resolve real versions — do not guess:
 
 ```bash
 for p in next react react-dom typescript tailwindcss @prisma/client prisma zod vitest; do
-  echo "\"$p\": \"^$(pnpm view $p version)\","
+  echo "\"$p\": \"^$(npm view $p version)\","
 done
 ```
 
@@ -859,7 +883,7 @@ export function dep(name: string): string {
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `pnpm test tests/tree`
+Run: `npm test -- tests/tree`
 Expected: PASS (14 tests across both tree test files)
 
 - [ ] **Step 7: Commit**
@@ -938,8 +962,8 @@ import { ReadmeModel } from '@/generator/tree/readme-model'
 describe('ReadmeModel', () => {
   it('renders the project name as an H1 followed by sections', () => {
     const r = new ReadmeModel()
-    r.section('Getting started', 'Run `pnpm dev`.')
-    expect(r.render('hrims')).toBe('# hrims\n\n## Getting started\n\nRun `pnpm dev`.\n')
+    r.section('Getting started', 'Run `npm run dev`.')
+    expect(r.render('hrims')).toBe('# hrims\n\n## Getting started\n\nRun `npm run dev`.\n')
   })
 
   it('renders sections in insertion order', () => {
@@ -959,7 +983,7 @@ describe('ReadmeModel', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test tests/tree/env-model.test.ts tests/tree/readme-model.test.ts`
+Run: `npm test -- tests/tree/env-model.test.ts tests/tree/readme-model.test.ts`
 Expected: FAIL — modules cannot be resolved
 
 - [ ] **Step 3: Write the implementations**
@@ -1042,7 +1066,7 @@ import { ReadmeModel } from './readme-model'
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pnpm test tests/tree`
+Run: `npm test -- tests/tree`
 Expected: PASS (22 tests)
 
 - [ ] **Step 6: Commit**
@@ -1133,7 +1157,7 @@ describe('MiddlewareModel', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/tree/provider-model.test.ts`
+Run: `npm test -- tests/tree/provider-model.test.ts`
 Expected: FAIL — modules cannot be resolved
 
 - [ ] **Step 3: Write the implementations**
@@ -1230,7 +1254,7 @@ import { MiddlewareModel } from './middleware-model'
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pnpm test tests/tree`
+Run: `npm test -- tests/tree`
 Expected: PASS (29 tests)
 
 - [ ] **Step 6: Commit**
@@ -1252,7 +1276,7 @@ git commit -m "feat: add provider and middleware models with deterministic order
 - Consumes: `FileTree` (Task 4), `AppSpec`, `LayerId`, `BaseId`, `LayoutId` (Task 2)
 - Produces: `Layer`, `LayerCtx`, `LAYERS` registry, `resolveLayers(app: AppSpec): Layer[]`
 
-**Refinement of the spec:** `LayerCtx` deliberately does **not** carry `docker`/`ci` strategies. Per-app layers never need them — `docker` and `gh-actions` are `RootLayer`s (Task 12) and receive strategies through `RootCtx`. This makes per-app layers strictly layout-agnostic by construction rather than by convention.
+**Refinement of the spec:** `LayerCtx` carries `pm` but deliberately does **not** carry `docker`/`ci` strategies. Per-app layers never need them — `docker` and `gh-actions` are `RootLayer`s (Task 13) and receive strategies through `RootCtx`. This makes per-app layers strictly layout-agnostic by construction rather than by convention.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1264,7 +1288,7 @@ import { resolveLayers } from '@/generator/layers/resolve'
 import type { Layer } from '@/generator/layers/types'
 import type { AppSpec, LayerId } from '@/generator/config/types'
 
-/** Stub layers keep this task testable without depending on Task 10. */
+/** Stub layers keep this task testable without depending on Task 11. */
 const stub = (id: string, over: Partial<Layer> = {}): Layer => ({
   id: id as LayerId,
   label: id,
@@ -1328,7 +1352,7 @@ describe('resolveLayers', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/layers/resolve.test.ts`
+Run: `npm test -- tests/layers/resolve.test.ts`
 Expected: FAIL — cannot resolve `@/generator/layers/resolve`
 
 - [ ] **Step 3: Write the contract**
@@ -1338,10 +1362,13 @@ Create `src/generator/layers/types.ts`:
 ```ts
 import type { FileTree } from '../tree/file-tree'
 import type { AppSpec, BaseId, LayerId, LayoutId } from '../config/types'
+import type { PackageManagerStrategy } from '../pm/types'
 
 export interface LayerCtx {
   app: AppSpec
   project: { name: string; layout: LayoutId }
+  /** Derived from cfg.pm. Layers use it to name commands in docs and scripts. */
+  pm: PackageManagerStrategy
   /** The other app in the project, if there is one. */
   sibling?: AppSpec
 }
@@ -1449,7 +1476,7 @@ export {}
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pnpm test tests/layers/resolve.test.ts`
+Run: `npm test -- tests/layers/resolve.test.ts`
 Expected: PASS (8 tests) — the stub registry means this task is green on its own.
 
 - [ ] **Step 6: Commit**
@@ -1461,7 +1488,214 @@ git commit -m "feat: add layer contract, registry, and dependency resolver"
 
 ---
 
-### Task 9: Base contract and the Next.js base template
+### Task 9: PackageManagerStrategy
+
+**Files:**
+- Create: `src/generator/pm/types.ts`, `src/generator/pm/npm.ts`, `src/generator/pm/pnpm.ts`, `src/generator/pm/index.ts`
+- Test: `tests/pm/strategy.test.ts`
+
+**Interfaces:**
+- Consumes: `PmId` (Task 2)
+- Produces: `PackageManagerStrategy`, `getPackageManager(id: PmId): PackageManagerStrategy`, `npmStrategy`, `pnpmStrategy`
+
+The package manager is a strategy rather than a layer because it adds nothing — it changes how artifacts that already exist get rendered. It is consumed by the base (README), by any layer that documents a command, by the Docker root layer, and by the monorepo assembler in Plan 2.
+
+Two rows make this more than find-and-replace: npm declares a workspace-internal dependency with a plain semver range and symlinks it automatically, while pnpm uses `workspace:*`; and npm declares workspaces in the root `package.json` while pnpm needs a separate `pnpm-workspace.yaml`.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/pm/strategy.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest'
+import { getPackageManager } from '@/generator/pm'
+
+describe('npm strategy', () => {
+  const pm = getPackageManager('npm')
+
+  it('prefixes scripts with run', () => {
+    expect(pm.runScript('dev')).toBe('npm run dev')
+  })
+
+  it('uses ci for a frozen install', () => {
+    expect(pm.installFrozen()).toBe('npm ci')
+  })
+
+  it('names the npm lockfile', () => {
+    expect(pm.lockfile()).toBe('package-lock.json')
+  })
+
+  it('needs no extra docker setup because the node image ships npm', () => {
+    expect(pm.dockerSetup()).toBe('')
+  })
+
+  it('declares workspaces in the root package.json, not a separate file', () => {
+    expect(pm.workspaceFiles(['apps/api'])).toEqual({})
+    expect(pm.workspacePkgFields(['apps/api'])).toEqual({ workspaces: ['apps/api'] })
+  })
+
+  it('uses a plain range for an internal dependency', () => {
+    expect(pm.internalDep()).toBe('*')
+  })
+})
+
+describe('pnpm strategy', () => {
+  const pm = getPackageManager('pnpm')
+
+  it('calls scripts directly', () => {
+    expect(pm.runScript('dev')).toBe('pnpm dev')
+  })
+
+  it('uses a frozen lockfile install', () => {
+    expect(pm.installFrozen()).toBe('pnpm install --frozen-lockfile')
+  })
+
+  it('names the pnpm lockfile', () => {
+    expect(pm.lockfile()).toBe('pnpm-lock.yaml')
+  })
+
+  it('enables corepack in docker', () => {
+    expect(pm.dockerSetup()).toContain('corepack enable')
+  })
+
+  it('declares workspaces in a separate yaml file', () => {
+    expect(pm.workspaceFiles(['apps/api'])['pnpm-workspace.yaml']).toContain('apps/api')
+    expect(pm.workspacePkgFields(['apps/api'])).toEqual({})
+  })
+
+  it('uses the workspace protocol for an internal dependency', () => {
+    expect(pm.internalDep()).toBe('workspace:*')
+  })
+})
+
+describe('getPackageManager', () => {
+  it('rejects an unknown package manager rather than silently defaulting', () => {
+    // @ts-expect-error deliberately invalid id
+    expect(() => getPackageManager('yarn')).toThrow(/unknown package manager/i)
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npm test -- tests/pm/strategy.test.ts`
+Expected: FAIL — cannot resolve `@/generator/pm`
+
+- [ ] **Step 3: Write the contract**
+
+Create `src/generator/pm/types.ts`:
+
+```ts
+import type { PmId } from '../config/types'
+
+export interface PackageManagerStrategy {
+  id: PmId
+  /** The command a human runs for a script, e.g. `npm run dev`. */
+  runScript(script: string): string
+  /** Install for a checkout that already has a lockfile. */
+  installFrozen(): string
+  /** Install when no lockfile exists yet. */
+  install(): string
+  lockfile(): string
+  /** Dockerfile lines that make this package manager available. */
+  dockerSetup(): string
+  /** GitHub Actions steps that make this package manager available. */
+  ciSetupSteps(): string
+  /** Version range used for a workspace-internal dependency. */
+  internalDep(): string
+  /** Extra root files needed to declare a workspace. */
+  workspaceFiles(appPaths: string[]): Record<string, string>
+  /** Root package.json fields needed to declare a workspace. */
+  workspacePkgFields(appPaths: string[]): Record<string, unknown>
+}
+```
+
+- [ ] **Step 4: Write both strategies**
+
+Create `src/generator/pm/npm.ts`:
+
+```ts
+import type { PackageManagerStrategy } from './types'
+
+export const npmStrategy: PackageManagerStrategy = {
+  id: 'npm',
+  runScript: (script) => `npm run ${script}`,
+  installFrozen: () => 'npm ci',
+  install: () => 'npm install',
+  lockfile: () => 'package-lock.json',
+  dockerSetup: () => '',
+  ciSetupSteps: () => `      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm`,
+  internalDep: () => '*',
+  workspaceFiles: () => ({}),
+  workspacePkgFields: (appPaths) => ({ workspaces: appPaths }),
+}
+```
+
+Create `src/generator/pm/pnpm.ts`:
+
+```ts
+import type { PackageManagerStrategy } from './types'
+
+export const pnpmStrategy: PackageManagerStrategy = {
+  id: 'pnpm',
+  runScript: (script) => `pnpm ${script}`,
+  installFrozen: () => 'pnpm install --frozen-lockfile',
+  install: () => 'pnpm install',
+  lockfile: () => 'pnpm-lock.yaml',
+  dockerSetup: () => 'RUN corepack enable',
+  ciSetupSteps: () => `      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm`,
+  internalDep: () => 'workspace:*',
+  workspaceFiles: (appPaths) => ({
+    'pnpm-workspace.yaml': `packages:\n${appPaths.map((p) => `  - '${p}'`).join('\n')}\n`,
+  }),
+  workspacePkgFields: () => ({}),
+}
+```
+
+Create `src/generator/pm/index.ts`:
+
+```ts
+import type { PmId } from '../config/types'
+import type { PackageManagerStrategy } from './types'
+import { npmStrategy } from './npm'
+import { pnpmStrategy } from './pnpm'
+
+const STRATEGIES: Record<PmId, PackageManagerStrategy> = {
+  npm: npmStrategy,
+  pnpm: pnpmStrategy,
+}
+
+export function getPackageManager(id: PmId): PackageManagerStrategy {
+  const pm = STRATEGIES[id]
+  if (!pm) throw new Error(`Unknown package manager "${id}"`)
+  return pm
+}
+
+export type { PackageManagerStrategy }
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `npm test -- tests/pm`
+Expected: PASS (13 tests)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/generator/pm tests/pm
+git commit -m "feat: add package manager strategy for npm and pnpm"
+```
+
+---
+
+### Task 10: Base contract and the Next.js base template
 
 **Files:**
 - Create: `src/generator/bases/types.ts`, `src/generator/bases/registry.ts`, `src/generator/bases/next/index.ts`, `src/generator/bases/next/files.ts`
@@ -1481,11 +1715,13 @@ Create `tests/bases/next.test.ts`:
 import { describe, it, expect } from 'vitest'
 import { FileTree } from '@/generator/tree/file-tree'
 import { nextBase } from '@/generator/bases/next'
+import { getPackageManager } from '@/generator/pm'
 import type { LayerCtx } from '@/generator/layers/types'
 
 const ctx: LayerCtx = {
   app: { id: 'web', base: 'next', layers: [], options: {} },
   project: { name: 'hrims', layout: 'siblings' },
+  pm: getPackageManager('npm'),
 }
 
 function build(): FileTree {
@@ -1524,6 +1760,18 @@ describe('next base', () => {
     expect(build().read('src/app/layout.tsx')).toContain('{children}')
   })
 
+  it('documents npm commands in the README when npm is selected', () => {
+    expect(build().read('README.md')).toContain('npm run dev')
+  })
+
+  it('documents pnpm commands in the README when pnpm is selected', () => {
+    const tree = new FileTree()
+    const pnpmCtx = { ...ctx, pm: getPackageManager('pnpm') }
+    nextBase.init(tree, pnpmCtx)
+    nextBase.renderComposed(tree, pnpmCtx)
+    expect(tree.read('README.md')).toContain('pnpm dev')
+  })
+
   it('nests providers into the layout when a layer pushed one', () => {
     const tree = new FileTree()
     nextBase.init(tree, ctx)
@@ -1538,7 +1786,7 @@ describe('next base', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/bases/next.test.ts`
+Run: `npm test -- tests/bases/next.test.ts`
 Expected: FAIL — cannot resolve `@/generator/bases/next`
 
 - [ ] **Step 3: Write the Base contract**
@@ -1661,7 +1909,7 @@ export const nextBase: Base = {
 
     tree.readme.section(
       'Getting started',
-      ['```bash', 'pnpm install', 'pnpm dev', '```', '', 'Open http://localhost:3000.'].join('\n')
+      ['```bash', ctx.pm.install(), ctx.pm.runScript('dev'), '```', '', 'Open http://localhost:3000.'].join('\n')
     )
   },
 
@@ -1702,15 +1950,15 @@ registerBase(nextBase)
 - [ ] **Step 5: Add the missing versions**
 
 ```bash
-for p in next react react-dom typescript; do echo "\"$p\": \"^$(pnpm view $p version)\","; done
+for p in next react react-dom typescript; do echo "\"$p\": \"^$(npm view $p version)\","; done
 ```
 
 Ensure each appears in `VERSIONS` in `src/generator/versions.ts`.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `pnpm test tests/bases/next.test.ts`
-Expected: PASS (6 tests)
+Run: `npm test -- tests/bases/next.test.ts`
+Expected: PASS (8 tests)
 
 - [ ] **Step 7: Commit**
 
@@ -1721,7 +1969,7 @@ git commit -m "feat: add base contract and Next.js base template"
 
 ---
 
-### Task 10: The tailwind and prisma layers
+### Task 11: The tailwind and prisma layers
 
 **Files:**
 - Create: `src/generator/layers/tailwind.ts`, `src/generator/layers/prisma.ts`
@@ -1742,11 +1990,13 @@ Create `tests/layers/tailwind.test.ts`:
 import { describe, it, expect } from 'vitest'
 import { FileTree } from '@/generator/tree/file-tree'
 import { tailwindLayer } from '@/generator/layers/tailwind'
+import { getPackageManager } from '@/generator/pm'
 import type { LayerCtx } from '@/generator/layers/types'
 
 const ctx: LayerCtx = {
   app: { id: 'web', base: 'next', layers: ['tailwind'], options: {} },
   project: { name: 'hrims', layout: 'siblings' },
+  pm: getPackageManager('npm'),
 }
 
 describe('tailwind layer', () => {
@@ -1777,11 +2027,13 @@ Create `tests/layers/prisma.test.ts`:
 import { describe, it, expect } from 'vitest'
 import { FileTree } from '@/generator/tree/file-tree'
 import { prismaLayer } from '@/generator/layers/prisma'
+import { getPackageManager } from '@/generator/pm'
 import type { LayerCtx } from '@/generator/layers/types'
 
-const ctx = (db: string): LayerCtx => ({
+const ctx = (db: string, pm: 'npm' | 'pnpm' = 'npm'): LayerCtx => ({
   app: { id: 'api', base: 'next', layers: ['prisma'], options: { db } },
   project: { name: 'hrims', layout: 'siblings' },
+  pm: getPackageManager(pm),
 })
 
 describe('prisma layer', () => {
@@ -1822,17 +2074,23 @@ describe('prisma layer', () => {
     expect(tree.read('src/lib/db.ts')).toContain('globalThis')
   })
 
-  it('documents itself in the README', () => {
+  it('documents itself in the README using the selected package manager', () => {
     const tree = new FileTree()
     prismaLayer.apply(tree, ctx('postgres'))
-    expect(tree.readme.render('x')).toContain('prisma migrate dev')
+    expect(tree.readme.render('x')).toContain('npm run db:migrate')
+  })
+
+  it('documents pnpm commands when pnpm is selected', () => {
+    const tree = new FileTree()
+    prismaLayer.apply(tree, ctx('postgres', 'pnpm'))
+    expect(tree.readme.render('x')).toContain('pnpm db:migrate')
   })
 })
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test tests/layers`
+Run: `npm test -- tests/layers`
 Expected: FAIL — layer modules cannot be resolved
 
 - [ ] **Step 3: Write the tailwind layer**
@@ -1933,7 +2191,7 @@ datasource db {
 
     tree.readme.section(
       'Database',
-      ['```bash', 'pnpm db:migrate', '```', '', 'Edit `prisma/schema.prisma`, then run the command above.'].join('\n')
+      ['```bash', ctx.pm.runScript('db:migrate'), '```', '', 'Edit `prisma/schema.prisma`, then run the command above.'].join('\n')
     )
   },
 }
@@ -1956,12 +2214,12 @@ export {}
 - [ ] **Step 6: Add the missing versions**
 
 ```bash
-for p in tailwindcss @tailwindcss/postcss @prisma/client prisma; do echo "\"$p\": \"^$(pnpm view $p version)\","; done
+for p in tailwindcss @tailwindcss/postcss @prisma/client prisma; do echo "\"$p\": \"^$(npm view $p version)\","; done
 ```
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `pnpm test tests/layers`
+Run: `npm test -- tests/layers`
 Expected: PASS — 10 layer tests plus all 7 resolver tests from Task 8, which now find registered layers
 
 - [ ] **Step 8: Commit**
@@ -1973,14 +2231,14 @@ git commit -m "feat: add tailwind and prisma layers"
 
 ---
 
-### Task 11: Assembler contract and the siblings assembler
+### Task 12: Assembler contract and the siblings assembler
 
 **Files:**
 - Create: `src/generator/assemblers/types.ts`, `src/generator/assemblers/registry.ts`, `src/generator/assemblers/siblings.ts`
 - Test: `tests/assemblers/siblings.test.ts`
 
 **Interfaces:**
-- Consumes: `FileTree` (Task 4), `AppSpec`/`ProtosConfig` (Task 2), `Base` (Task 9)
+- Consumes: `FileTree` (Task 4), `AppSpec`/`ProtosConfig` (Task 2), `Base` (Task 10)
 - Produces: `BuiltApp`, `Deliverable`, `ComposeService`, `DockerStrategy`, `CiStrategy`, `Assembler`, `ProjectTree`; `getAssembler(id: LayoutId): Assembler`; `siblingsAssembler`
 
 - [ ] **Step 1: Write the failing test**
@@ -1991,11 +2249,12 @@ Create `tests/assemblers/siblings.test.ts`:
 import { describe, it, expect } from 'vitest'
 import { FileTree } from '@/generator/tree/file-tree'
 import { siblingsAssembler } from '@/generator/assemblers/siblings'
+import { getPackageManager } from '@/generator/pm'
 import type { BuiltApp } from '@/generator/assemblers/types'
 import type { ProtosConfig } from '@/generator/config/types'
 
 const cfg: ProtosConfig = {
-  v: 1, name: 'hrims', layout: 'siblings',
+  v: 1, name: 'hrims', layout: 'siblings', pm: 'npm',
   apps: [
     { id: 'api', base: 'express', layers: [], options: {} },
     { id: 'web', base: 'next', layers: [], options: {} },
@@ -2040,12 +2299,30 @@ describe('siblings assembler', () => {
     const keys = [...siblingsAssembler.assemble(apps(), cfg, new FileTree())[0].files.keys()]
     expect(keys).toEqual([...keys].sort())
   })
+
+  it('renders an npm Dockerfile when npm is selected', () => {
+    const df = siblingsAssembler.dockerStrategy(getPackageManager('npm')).dockerfile(apps()[0], 'hrims-api')
+    expect(df).toContain('RUN npm install')
+    expect(df).not.toContain('corepack')
+  })
+
+  it('renders a pnpm Dockerfile with corepack when pnpm is selected', () => {
+    const df = siblingsAssembler.dockerStrategy(getPackageManager('pnpm')).dockerfile(apps()[0], 'hrims-api')
+    expect(df).toContain('corepack enable')
+    expect(df).toContain('pnpm-lock.yaml')
+  })
+
+  it('renders CI steps for the selected package manager', () => {
+    const paths = new Map([['api', 'hrims-api'], ['web', 'hrims-web']])
+    const wf = siblingsAssembler.ciStrategy(getPackageManager('pnpm')).workflow(apps(), paths)
+    expect(wf).toContain('pnpm/action-setup')
+  })
 })
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/assemblers/siblings.test.ts`
+Run: `npm test -- tests/assemblers/siblings.test.ts`
 Expected: FAIL — cannot resolve `@/generator/assemblers/siblings`
 
 - [ ] **Step 3: Write the contracts**
@@ -2055,6 +2332,7 @@ Create `src/generator/assemblers/types.ts`:
 ```ts
 import type { FileTree } from '../tree/file-tree'
 import type { AppSpec, LayoutId, ProtosConfig } from '../config/types'
+import type { PackageManagerStrategy } from '../pm/types'
 
 export interface BuiltApp {
   spec: AppSpec
@@ -2097,8 +2375,8 @@ export interface Assembler {
   id: LayoutId
   appPath(spec: AppSpec, cfg: ProtosConfig): string
   assemble(apps: BuiltApp[], cfg: ProtosConfig, root: FileTree): Deliverable[]
-  dockerStrategy(): DockerStrategy
-  ciStrategy(): CiStrategy
+  dockerStrategy(pm: PackageManagerStrategy): DockerStrategy
+  ciStrategy(pm: PackageManagerStrategy): CiStrategy
 }
 ```
 
@@ -2128,32 +2406,39 @@ Create `src/generator/assemblers/siblings.ts`:
 ```ts
 import { registerAssembler } from './registry'
 import type { Assembler, BuiltApp, ComposeService, CiStrategy, Deliverable, DockerStrategy } from './types'
+import type { PackageManagerStrategy } from '../pm/types'
 import type { FileTree } from '../tree/file-tree'
 import type { AppSpec, ProtosConfig } from '../config/types'
 
-const dockerStrategy: DockerStrategy = {
+const dockerStrategy = (pm: PackageManagerStrategy): DockerStrategy => ({
   dockerfile(_app: BuiltApp): string {
-    return `FROM node:22-alpine AS base
-RUN corepack enable
-
-FROM base AS deps
-WORKDIR /app
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile
-
-FROM base AS build
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-RUN pnpm build
-
-FROM base AS runtime
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=build /app ./
-EXPOSE 3000
-CMD ["pnpm", "start"]
-`
+    const setup = pm.dockerSetup()
+    return [
+      'FROM node:22-alpine AS base',
+      ...(setup ? [setup] : []),
+      '',
+      'FROM base AS deps',
+      'WORKDIR /app',
+      `COPY package.json ${pm.lockfile()}* ./`,
+      // install(), not installFrozen(): protos cannot generate a lockfile
+      // without running the package manager, so a frozen install would fail
+      // on the very first build. See the note under this task.
+      `RUN ${pm.install()}`,
+      '',
+      'FROM base AS build',
+      'WORKDIR /app',
+      'COPY --from=deps /app/node_modules ./node_modules',
+      'COPY . .',
+      `RUN ${pm.runScript('build')}`,
+      '',
+      'FROM base AS runtime',
+      'WORKDIR /app',
+      'ENV NODE_ENV=production',
+      'COPY --from=build /app ./',
+      'EXPOSE 3000',
+      `CMD ${JSON.stringify(pm.runScript('start').split(' '))}`,
+      '',
+    ].join('\n')
   },
 
   service(app: BuiltApp, appPath: string): ComposeService {
@@ -2163,9 +2448,9 @@ CMD ["pnpm", "start"]
       ports: [`${app.spec.id === 'web' ? '3000' : '4000'}:3000`],
     }
   },
-}
+})
 
-const ciStrategy: CiStrategy = {
+const ciStrategy = (pm: PackageManagerStrategy): CiStrategy => ({
   workflow(apps: BuiltApp[], appPaths: Map<string, string>): string {
     const jobs = apps
       .map(
@@ -2176,13 +2461,9 @@ const ciStrategy: CiStrategy = {
         working-directory: ${appPaths.get(app.spec.id)}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build`
+${pm.ciSetupSteps()}
+      - run: ${pm.install()}
+      - run: ${pm.runScript('build')}`
       )
       .join('\n')
 
@@ -2196,7 +2477,7 @@ jobs:
 ${jobs}
 `
   },
-}
+})
 
 export const siblingsAssembler: Assembler = {
   id: 'siblings',
@@ -2217,8 +2498,8 @@ export const siblingsAssembler: Assembler = {
     return [{ name: cfg.name, files: sorted }]
   },
 
-  dockerStrategy: () => dockerStrategy,
-  ciStrategy: () => ciStrategy,
+  dockerStrategy,
+  ciStrategy,
 }
 
 registerAssembler(siblingsAssembler)
@@ -2226,8 +2507,10 @@ registerAssembler(siblingsAssembler)
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pnpm test tests/assemblers/siblings.test.ts`
-Expected: PASS (5 tests)
+Run: `npm test -- tests/assemblers/siblings.test.ts`
+Expected: PASS (8 tests)
+
+**Why `install()` and not `installFrozen()`:** protos cannot generate a lockfile, because producing one means running the package manager — which the "no code execution" constraint forbids. A generated `Dockerfile` using `npm ci` or `pnpm install --frozen-lockfile` would therefore fail on its very first build. Generated projects use the plain install everywhere, and the README tells the user to commit the lockfile after their first install. Reproducibility is the user's to opt into; a scaffold that cannot build is not.
 
 - [ ] **Step 6: Commit**
 
@@ -2238,14 +2521,14 @@ git commit -m "feat: add assembler contract and siblings layout"
 
 ---
 
-### Task 12: RootLayer contract and the docker root layer
+### Task 13: RootLayer contract and the docker root layer
 
 **Files:**
 - Create: `src/generator/layers/root-types.ts`, `src/generator/layers/docker.ts`, `src/generator/layers/root-registry.ts`
 - Test: `tests/layers/docker.test.ts`
 
 **Interfaces:**
-- Consumes: `ProjectTree`, `DockerStrategy`, `BuiltApp` (Task 11); `FileTree` (Task 4)
+- Consumes: `ProjectTree`, `DockerStrategy`, `BuiltApp` (Task 12); `FileTree` (Task 4)
 - Produces: `RootLayer`, `RootCtx`, `ROOT_LAYERS`, `registerRootLayer`, `resolveRootLayers(cfg)`, `dockerRootLayer`
 
 This is the seam the spec's self-review added. `docker` writes a Dockerfile into *each app* and a single compose file at the *root*, which the per-app `Layer` signature cannot express. It also reads each app's `env` model to decide whether a database service belongs in compose — behaviour, not a checkbox.
@@ -2261,12 +2544,13 @@ import { describe, it, expect } from 'vitest'
 import { FileTree } from '@/generator/tree/file-tree'
 import { dockerRootLayer } from '@/generator/layers/docker'
 import { siblingsAssembler } from '@/generator/assemblers/siblings'
+import { getPackageManager } from '@/generator/pm'
 import type { ProjectTree } from '@/generator/assemblers/types'
 import type { RootCtx } from '@/generator/layers/root-types'
 import type { ProtosConfig } from '@/generator/config/types'
 
 const cfg: ProtosConfig = {
-  v: 1, name: 'hrims', layout: 'siblings',
+  v: 1, name: 'hrims', layout: 'siblings', pm: 'npm',
   apps: [{ id: 'web', base: 'next', layers: [], options: {} }],
   layers: ['docker'],
 }
@@ -2281,10 +2565,13 @@ function project(withDb = false): ProjectTree {
   }
 }
 
+const pm = getPackageManager('npm')
+
 const ctx: RootCtx = {
   project: { name: 'hrims', layout: 'siblings' },
-  docker: siblingsAssembler.dockerStrategy(),
-  ci: siblingsAssembler.ciStrategy(),
+  pm,
+  docker: siblingsAssembler.dockerStrategy(pm),
+  ci: siblingsAssembler.ciStrategy(pm),
 }
 
 describe('docker root layer', () => {
@@ -2323,7 +2610,7 @@ describe('docker root layer', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/layers/docker.test.ts`
+Run: `npm test -- tests/layers/docker.test.ts`
 Expected: FAIL — cannot resolve `@/generator/layers/docker`
 
 - [ ] **Step 3: Write the RootLayer contract**
@@ -2333,9 +2620,11 @@ Create `src/generator/layers/root-types.ts`:
 ```ts
 import type { LayerId, LayoutId } from '../config/types'
 import type { CiStrategy, DockerStrategy, ProjectTree } from '../assemblers/types'
+import type { PackageManagerStrategy } from '../pm/types'
 
 export interface RootCtx {
   project: { name: string; layout: LayoutId }
+  pm: PackageManagerStrategy
   docker: DockerStrategy
   ci: CiStrategy
 }
@@ -2453,7 +2742,7 @@ import './docker'
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `pnpm test tests/layers/docker.test.ts`
+Run: `npm test -- tests/layers/docker.test.ts`
 Expected: PASS (5 tests)
 
 - [ ] **Step 7: Commit**
@@ -2465,14 +2754,14 @@ git commit -m "feat: add RootLayer contract and docker root layer"
 
 ---
 
-### Task 13: Pipeline orchestrator
+### Task 14: Pipeline orchestrator
 
 **Files:**
 - Create: `src/generator/pipeline.ts`
 - Test: `tests/pipeline.test.ts`
 
 **Interfaces:**
-- Consumes: everything from Tasks 2–12
+- Consumes: everything from Tasks 2–13
 - Produces: `generate(cfg: ProtosConfig): Promise<Deliverable[]>`
 
 Ordering is load-bearing: root layers run **before** `renderComposed` so that anything they add to a model still reaches `package.json` and `.env`.
@@ -2487,7 +2776,7 @@ import { generate } from '@/generator/pipeline'
 import type { ProtosConfig } from '@/generator/config/types'
 
 const cfg: ProtosConfig = {
-  v: 1, name: 'hrims', layout: 'siblings',
+  v: 1, name: 'hrims', layout: 'siblings', pm: 'npm',
   apps: [{ id: 'web', base: 'next', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
   layers: ['docker'],
 }
@@ -2541,12 +2830,21 @@ describe('generate', () => {
     const [out] = await generate(cfg)
     expect(out.files.get('hrims-web/src/lib/db.ts')).not.toContain('\t')
   })
+
+  it('threads the package manager choice into every artifact', async () => {
+    const [npmOut] = await generate(cfg)
+    const [pnpmOut] = await generate({ ...cfg, pm: 'pnpm' })
+    expect(npmOut.files.get('hrims-web/Dockerfile')).toContain('npm install')
+    expect(npmOut.files.get('hrims-web/README.md')).toContain('npm run dev')
+    expect(pnpmOut.files.get('hrims-web/Dockerfile')).toContain('corepack enable')
+    expect(pnpmOut.files.get('hrims-web/README.md')).toContain('pnpm dev')
+  })
 })
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/pipeline.test.ts`
+Run: `npm test -- tests/pipeline.test.ts`
 Expected: FAIL — cannot resolve `@/generator/pipeline`
 
 - [ ] **Step 3: Write the implementation**
@@ -2561,6 +2859,7 @@ import { getBase } from './bases/registry'
 import { resolveLayers } from './layers/resolve'
 import { ROOT_LAYERS } from './layers/root-registry'
 import { getAssembler } from './assemblers/registry'
+import { getPackageManager } from './pm'
 import type { BuiltApp, Deliverable, ProjectTree } from './assemblers/types'
 import './bases/index'
 import './layers/index'
@@ -2568,6 +2867,7 @@ import './assemblers/index'
 
 export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
   const assembler = getAssembler(cfg.layout)
+  const pm = getPackageManager(cfg.pm)
 
   // 1. Build each app: base seeds the tree, then layers apply.
   const apps: BuiltApp[] = cfg.apps.map((spec) => {
@@ -2576,6 +2876,7 @@ export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
     const ctx = {
       app: spec,
       project: { name: cfg.name, layout: cfg.layout },
+      pm,
       sibling: cfg.apps.find((a) => a.id !== spec.id),
     }
     base.init(tree, ctx)
@@ -2591,8 +2892,9 @@ export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
   }
   const rootCtx = {
     project: { name: cfg.name, layout: cfg.layout },
-    docker: assembler.dockerStrategy(),
-    ci: assembler.ciStrategy(),
+    pm,
+    docker: assembler.dockerStrategy(pm),
+    ci: assembler.ciStrategy(pm),
   }
   for (const id of cfg.layers) {
     const layer = ROOT_LAYERS[id]
@@ -2606,6 +2908,7 @@ export async function generate(cfg: ProtosConfig): Promise<Deliverable[]> {
     getBase(app.spec.base).renderComposed(app.tree, {
       app: app.spec,
       project: { name: cfg.name, layout: cfg.layout },
+      pm,
       sibling: cfg.apps.find((a) => a.id !== app.spec.id),
     })
   }
@@ -2661,13 +2964,13 @@ export {}
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pnpm test tests/pipeline.test.ts`
-Expected: PASS (7 tests)
+Run: `npm test -- tests/pipeline.test.ts`
+Expected: PASS (8 tests)
 
 - [ ] **Step 6: Run the whole suite**
 
-Run: `pnpm test`
-Expected: PASS — every test from Tasks 1–13
+Run: `npm test`
+Expected: PASS — every test from Tasks 1–14
 
 - [ ] **Step 7: Commit**
 
@@ -2678,14 +2981,14 @@ git commit -m "feat: add generation pipeline with deterministic ordering"
 
 ---
 
-### Task 14: ZIP sink and the generate endpoint
+### Task 15: ZIP sink and the generate endpoint
 
 **Files:**
 - Create: `src/generator/sinks/zip.ts`, `src/app/api/generate/route.ts`
 - Test: `tests/sinks/zip.test.ts`, `tests/api/generate.test.ts`
 
 **Interfaces:**
-- Consumes: `Deliverable` (Task 11), `generate` (Task 13), `decodeConfig` (Task 3), `ConfigError` (Task 2)
+- Consumes: `Deliverable` (Task 12), `generate` (Task 14), `decodeConfig` (Task 3), `ConfigError` (Task 2)
 - Produces: `toZip(deliverables: Deliverable[], projectName: string): Uint8Array`; `GET /api/generate?c=<config>`
 
 - [ ] **Step 1: Write the failing tests**
@@ -2735,7 +3038,7 @@ import { encodeConfig } from '@/generator/config/codec'
 import type { ProtosConfig } from '@/generator/config/types'
 
 const cfg: ProtosConfig = {
-  v: 1, name: 'hrims', layout: 'siblings',
+  v: 1, name: 'hrims', layout: 'siblings', pm: 'npm',
   apps: [{ id: 'web', base: 'next', layers: ['tailwind'], options: {} }],
   layers: [],
 }
@@ -2767,7 +3070,7 @@ describe('GET /api/generate', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test tests/sinks tests/api`
+Run: `npm test -- tests/sinks tests/api`
 Expected: FAIL — modules cannot be resolved
 
 - [ ] **Step 3: Write the ZIP sink**
@@ -2830,7 +3133,7 @@ The `Cache-Control` header is safe and valuable here: the config string fully de
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pnpm test tests/sinks tests/api`
+Run: `npm test -- tests/sinks tests/api`
 Expected: PASS (7 tests)
 
 - [ ] **Step 6: Add rate limiting**
@@ -2895,7 +3198,7 @@ it('returns 429 once the window is exhausted', async () => {
 })
 ```
 
-Run: `pnpm test tests/api`
+Run: `npm test -- tests/api`
 Expected: PASS (5 tests)
 
 - [ ] **Step 7: Verify a real download end to end**
@@ -2910,6 +3213,7 @@ console.log(
     v: 1,
     name: 'hrims',
     layout: 'siblings',
+    pm: 'npm',
     apps: [{ id: 'web', base: 'next', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
     layers: ['docker'],
   })
@@ -2925,9 +3229,9 @@ Add to `package.json` scripts:
 Then:
 
 ```bash
-pnpm dev &
+npm run dev &
 until curl -sf http://localhost:3000 -o /dev/null; do sleep 1; done
-C=$(pnpm -s encode)
+C=$(npm run -s encode)
 curl -sfL "http://localhost:3000/api/generate?c=$C" -o /tmp/hrims.zip
 unzip -l /tmp/hrims.zip
 ```
@@ -2938,7 +3242,7 @@ Expected: the listing contains `hrims/hrims-web/package.json`, `hrims/hrims-web/
 
 ```bash
 cd /tmp && rm -rf hrims && unzip -q hrims.zip && cd hrims/hrims-web
-pnpm install && pnpm build
+npm install && npm run build
 ```
 
 Expected: install and build both succeed. This is the first moment protos has produced something real — do not skip it. Stop the dev server afterwards.
@@ -2952,14 +3256,14 @@ git commit -m "feat: add zip sink, rate-limited generate endpoint, and encode sc
 
 ---
 
-### Task 15: Tier 2 — snapshot harness
+### Task 16: Tier 2 — snapshot harness
 
 **Files:**
 - Create: `tests/snapshots/manifest.ts`, `tests/snapshots/configs.ts`, `tests/snapshots/snapshot.test.ts`
 - Test: the above (this task's deliverable *is* tests)
 
 **Interfaces:**
-- Consumes: `generate` (Task 13), `ProtosConfig` (Task 2)
+- Consumes: `generate` (Task 14), `ProtosConfig` (Task 2)
 - Produces: `manifestOf(deliverables): string`, `CANONICAL_CONFIGS: { name: string; config: ProtosConfig }[]`
 
 Tier 2 catches what tier 1 structurally cannot: one layer breaking another. Reviewing the snapshot diff is how a layer change gets approved — an unexpected hash change in an unrelated file is the signal.
@@ -2990,30 +3294,32 @@ export function manifestOf(deliverables: Deliverable[]): string {
 
 Create `tests/snapshots/configs.ts`. Plan 1 implements one base and three layers, so only configs 1, 2, and 9 from the spec's matrix are expressible; Plan 2 fills in the rest.
 
+Config 2 runs **pnpm** and the other two run npm, matching the spec's rule that the package manager is covered by swapping rather than multiplying the matrix.
+
 ```ts
 import type { ProtosConfig } from '@/generator/config/types'
 
 export const CANONICAL_CONFIGS: { name: string; config: ProtosConfig }[] = [
   {
-    name: '01-next-tailwind-siblings',
+    name: '01-next-tailwind-siblings-npm',
     config: {
-      v: 1, name: 'demo', layout: 'siblings',
+      v: 1, name: 'demo', layout: 'siblings', pm: 'npm',
       apps: [{ id: 'web', base: 'next', layers: ['tailwind'], options: {} }],
       layers: [],
     },
   },
   {
-    name: '02-next-prisma-postgres-docker',
+    name: '02-next-prisma-postgres-docker-pnpm',
     config: {
-      v: 1, name: 'demo', layout: 'siblings',
+      v: 1, name: 'demo', layout: 'siblings', pm: 'pnpm',
       apps: [{ id: 'web', base: 'next', layers: ['tailwind', 'prisma'], options: { db: 'postgres' } }],
       layers: ['docker'],
     },
   },
   {
-    name: '09-next-minimal',
+    name: '09-next-minimal-npm',
     config: {
-      v: 1, name: 'demo', layout: 'siblings',
+      v: 1, name: 'demo', layout: 'siblings', pm: 'npm',
       apps: [{ id: 'web', base: 'next', layers: [], options: {} }],
       layers: [],
     },
@@ -3038,6 +3344,13 @@ describe('canonical config snapshots', () => {
     })
   }
 
+  it('produces a different manifest for the same project under a different package manager', async () => {
+    const base = CANONICAL_CONFIGS[0].config
+    const asNpm = manifestOf(await generate(base))
+    const asPnpm = manifestOf(await generate({ ...base, pm: 'pnpm' }))
+    expect(asNpm).not.toBe(asPnpm)
+  })
+
   it('produces a different manifest when a layer is added', async () => {
     const [minimal, withTailwind] = await Promise.all([
       generate(CANONICAL_CONFIGS[2].config).then(manifestOf),
@@ -3050,8 +3363,8 @@ describe('canonical config snapshots', () => {
 
 - [ ] **Step 4: Record the snapshots**
 
-Run: `pnpm test tests/snapshots`
-Expected: PASS — 4 tests, with `tests/snapshots/__snapshots__/snapshot.test.ts.snap` newly written
+Run: `npm test -- tests/snapshots`
+Expected: PASS — 5 tests, with `tests/snapshots/__snapshots__/snapshot.test.ts.snap` newly written
 
 - [ ] **Step 5: Read the recorded snapshot before trusting it**
 
@@ -3059,11 +3372,11 @@ Expected: PASS — 4 tests, with `tests/snapshots/__snapshots__/snapshot.test.ts
 cat tests/snapshots/__snapshots__/snapshot.test.ts.snap
 ```
 
-Confirm by eye that `02-next-prisma-postgres-docker` lists `Dockerfile`, `docker-compose.yml`, `prisma/schema.prisma`, and `.env`. A snapshot recorded without reading it is worthless.
+Confirm by eye that `02-next-prisma-postgres-docker-pnpm` lists `Dockerfile`, `docker-compose.yml`, `prisma/schema.prisma`, and `.env`. A snapshot recorded without reading it is worthless.
 
 - [ ] **Step 6: Verify the snapshot actually fails on a real regression**
 
-Temporarily change `GLOBALS_CSS` in `src/generator/layers/tailwind.ts` to `@import "tailwind";` and run `pnpm test tests/snapshots`.
+Temporarily change `GLOBALS_CSS` in `src/generator/layers/tailwind.ts` to `@import "tailwind";` and run `npm test -- tests/snapshots`.
 Expected: FAIL on configs 01 and 02, with unchanged hashes for 09.
 Revert the change and confirm the tests pass again.
 
@@ -3076,15 +3389,15 @@ git commit -m "test: add tier 2 snapshot harness over canonical configs"
 
 ---
 
-### Task 16: Tier 3 — smoke matrix and CI
+### Task 17: Tier 3 — smoke matrix and CI
 
 **Files:**
 - Create: `tests/smoke/smoke.test.ts`, `.github/workflows/ci.yml`, `.github/workflows/smoke.yml`
 - Modify: `vitest.config.ts` (exclude smoke from the default run)
 
 **Interfaces:**
-- Consumes: `generate` (Task 13), `CANONICAL_CONFIGS` (Task 15)
-- Produces: `pnpm smoke`; two CI workflows
+- Consumes: `generate` (Task 14), `CANONICAL_CONFIGS` (Task 16)
+- Produces: `npm run smoke`; two CI workflows
 
 This is the tier that proves generated projects actually work. It writes real files to a temp directory, installs, builds, and lints them. It is slow by nature, so it runs nightly rather than on every push.
 
@@ -3108,6 +3421,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { generate } from '@/generator/pipeline'
+import { getPackageManager } from '@/generator/pm'
 import { CANONICAL_CONFIGS } from '../snapshots/configs'
 
 function run(cmd: string, args: string[], cwd: string): void {
@@ -3129,10 +3443,14 @@ describe('smoke matrix', () => {
             }
           }
 
-          // Generated projects use sibling folders; build each app in place.
+          // Generated projects use sibling folders; build each app in place
+          // with whichever package manager the config selected.
           const appDir = path.join(dir, config.name, `${config.name}-${config.apps[0].id}`)
-          run('pnpm', ['install', '--no-frozen-lockfile'], appDir)
-          run('pnpm', ['build'], appDir)
+          const pm = getPackageManager(config.pm)
+          const [installCmd, ...installArgs] = pm.install().split(' ')
+          run(installCmd, installArgs, appDir)
+          const [buildCmd, ...buildArgs] = pm.runScript('build').split(' ')
+          run(buildCmd, buildArgs, appDir)
           expect(true).toBe(true)
         } finally {
           rmSync(dir, { recursive: true, force: true })
@@ -3146,8 +3464,8 @@ describe('smoke matrix', () => {
 
 - [ ] **Step 3: Run the smoke suite locally**
 
-Run: `pnpm smoke`
-Expected: PASS for all 3 configs. This takes several minutes — each config runs a real `pnpm install` and `next build`.
+Run: `npm run smoke`
+Expected: PASS for all 3 configs. This takes several minutes — each config runs a real install and `next build`. Config 02 installs with pnpm, so make sure pnpm is available locally (`corepack enable`).
 
 If a build fails, that is the point of this tier: fix the base or layer that produced broken output before continuing.
 
@@ -3167,14 +3485,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm test
-      - run: pnpm build
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
 ```
 
 - [ ] **Step 5: Write the nightly smoke workflow**
@@ -3195,13 +3512,15 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      # protos itself uses npm; pnpm is installed as a tool because some
+      # generated projects in the matrix build with it.
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm smoke
+          cache: npm
+      - run: npm ci
+      - run: npm run smoke
 ```
 
 `workflow_dispatch` matters — after bumping anything in `versions.ts` you want to run this on demand rather than waiting for 3am.
@@ -3209,7 +3528,7 @@ jobs:
 - [ ] **Step 6: Verify the full suite one final time**
 
 ```bash
-pnpm test && pnpm build
+npm test && npm run build
 ```
 
 Expected: all tests pass and the app builds.
@@ -3225,10 +3544,10 @@ git commit -m "test: add tier 3 smoke matrix and CI workflows"
 
 ## Definition of done for Plan 1
 
-- [ ] `pnpm test` passes — tiers 1 and 2
-- [ ] `pnpm smoke` passes — tier 3, all 3 configs install and build
-- [ ] `pnpm build` succeeds
-- [ ] `GET /api/generate?c=<config>` returns a ZIP whose contents unzip, `pnpm install`, and `pnpm build` cleanly
+- [ ] `npm test` passes — tiers 1 and 2
+- [ ] `npm run smoke` passes — tier 3, all 3 configs install and build
+- [ ] `npm run build` succeeds
+- [ ] `GET /api/generate?c=<config>` returns a ZIP whose contents unzip, `npm install`, and `npm run build` cleanly
 - [ ] The architecture test confirms `src/generator/` imports nothing from `next`
 - [ ] No database, no persistence, and no shelling out anywhere in `src/generator/`
 
@@ -3242,6 +3561,7 @@ Plan 1 deliberately leaves these interfaces implemented once each so Plan 2 is r
 | `Layer` | `tailwind`, `prisma` | 12 more |
 | `RootLayer` | `docker` | `gh-actions` |
 | `Assembler` | `siblings` | `separate`, `monorepo` |
+| `PackageManagerStrategy` | `npm`, `pnpm` | consumed by the monorepo assembler |
 | Sink | `zip` | `tar`, `github` (v2) |
 
 Plan 3 consumes the `manifest` field already present on every layer to render the live preview without shipping templates to the browser.
