@@ -62,7 +62,7 @@ the CLI argument, and the server's input. One representation, four consumers.
 ### 3.3 Composable layers, not whole templates
 
 A small base template per framework, plus independent layers that each
-contribute files and structured edits. ~4 bases and ~14 layers express
+contribute files and structured edits. ~4 bases and ~15 layers express
 thousands of valid projects. Whole-template approaches multiply with every new
 option and cannot be maintained.
 
@@ -473,7 +473,7 @@ package if a future CLI ever needs to run offline.
 
 | Milestone | Scope |
 |---|---|
-| **v1** | Config schema + encoding, FileTree + models, 4 bases, 14 layers, all 3 assemblers, ZIP sink, live-preview UI, all 3 test tiers |
+| **v1** | Config schema + encoding, FileTree + models, 4 bases, 15 layers, all 3 assemblers, ZIP sink, live-preview UI, all 3 test tiers |
 | **v1.5** | Tar sink (`curl \| tar xz`) and `npx create-protos` thin client |
 | **v2** | GitHub push with OAuth, additional ecosystems (Go, FastAPI, or Laravel), further layers |
 
