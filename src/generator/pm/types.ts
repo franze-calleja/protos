@@ -13,6 +13,11 @@ export interface PackageManagerStrategy {
   dockerSetup(): string
   /** GitHub Actions steps that make this package manager available. */
   ciSetupSteps(): string
+  /**
+   * The exact `packageManager` field value, e.g. `pnpm@11.23.0`. Turborepo
+   * refuses to resolve a workspace without it.
+   */
+  packageManagerField(): string
   /** Version range used for a workspace-internal dependency. */
   internalDep(): string
   /** Files needed so the listed dependencies may run their install scripts. */

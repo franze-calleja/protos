@@ -52,6 +52,9 @@ export const expressBase: Base = {
     tree.pkg.addDevDep('@types/node', dep('@types/node'))
     tree.pkg.addDevDep('typescript', dep('typescript'))
     tree.pkg.addDevDep('tsx', dep('tsx'))
+    // tsx bundles esbuild, whose install script fetches a platform binary.
+    // pnpm blocks dependency scripts unless they are declared.
+    tree.pkg.allowBuildScripts(['esbuild'])
     tree.pkg.addScript('dev', 'tsx watch src/index.ts')
     tree.pkg.addScript('build', 'tsc')
     tree.pkg.addScript('start', 'node dist/index.js')

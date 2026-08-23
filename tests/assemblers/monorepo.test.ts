@@ -151,3 +151,12 @@ describe('package manager build permissions', () => {
     }
   })
 })
+
+describe('turborepo workspace resolution', () => {
+  it('declares packageManager, without which turbo refuses to resolve', () => {
+    expect(JSON.parse(filesOf().get('package.json')!).packageManager).toMatch(/^npm@/)
+    expect(
+      JSON.parse(filesOf({ ...cfg, pm: 'pnpm' }).get('package.json')!).packageManager
+    ).toMatch(/^pnpm@/)
+  })
+})

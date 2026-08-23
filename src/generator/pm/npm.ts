@@ -13,6 +13,7 @@ export const npmStrategy: PackageManagerStrategy = {
           cache: npm`,
   // npm runs dependency install scripts by default, so nothing is needed.
   buildScriptFiles: () => ({}),
+  packageManagerField: () => 'npm@12.0.2',
   internalDep: () => '*',
   workspaceFiles: () => ({}),
   workspacePkgFields: (appPaths) => ({ workspaces: appPaths }),

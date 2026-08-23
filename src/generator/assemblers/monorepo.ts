@@ -171,6 +171,8 @@ function renderRootPackage(cfg: ProtosConfig, pm: PackageManagerStrategy): strin
     name: cfg.name,
     version: '0.1.0',
     private: true,
+    // Turborepo will not resolve the workspace without this.
+    packageManager: pm.packageManagerField(),
     ...pm.workspacePkgFields(WORKSPACE_GLOBS),
     scripts: {
       build: 'turbo build',

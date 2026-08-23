@@ -142,11 +142,11 @@ demo/apps/web/src/app/page.tsx  781a1dd86547
 demo/apps/web/src/features/hello/Hello.tsx  17bc8873505a
 demo/apps/web/tsconfig.json  f23c3b4f2520
 demo/docker-compose.yml  933c9542ad6d
-demo/package.json  aec1dd69b553
+demo/package.json  2bafe2705ef9
 demo/packages/types/package.json  9b49197a12cd
 demo/packages/types/src/index.ts  bbf9f30e352b
 demo/packages/types/tsconfig.json  2403892012e6
-demo/pnpm-workspace.yaml  c039a7c3af5b
+demo/pnpm-workspace.yaml  babb85edee0b
 demo/turbo.json  c351b11e37b1"
 `;
 

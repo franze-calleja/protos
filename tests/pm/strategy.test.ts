@@ -83,3 +83,16 @@ describe('build script permissions', () => {
     expect(getPackageManager('pnpm').buildScriptFiles([])).toEqual({})
   })
 })
+
+describe('packageManager field', () => {
+  it('pins an exact version, which is what the field requires', () => {
+    expect(getPackageManager('npm').packageManagerField()).toMatch(/^npm@\d+\.\d+\.\d+$/)
+    expect(getPackageManager('pnpm').packageManagerField()).toMatch(/^pnpm@\d+\.\d+\.\d+$/)
+  })
+
+  it('never uses a range, which the field does not accept', () => {
+    for (const id of ['npm', 'pnpm'] as const) {
+      expect(getPackageManager(id).packageManagerField()).not.toContain('^')
+    }
+  })
+})
