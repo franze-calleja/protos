@@ -66,7 +66,84 @@ contribute files and structured edits. ~4 bases and ~15 layers express
 thousands of valid projects. Whole-template approaches multiply with every new
 option and cannot be maintained.
 
-### 3.4 No code execution during generation
+### 3.4 Package manager is a strategy, not a layer
+
+Layers are additive — they contribute files. The package manager adds nothing;
+it changes how artifacts that already exist are rendered. That makes it a
+strategy, supplied to layers and assemblers the same way `DockerStrategy` is.
+
+It is not cosmetic. npm workspaces declare a local dependency with a plain
+semver range and symlink it automatically; the `workspace:*` protocol is
+pnpm-only. The workspace declaration differs too — a `workspaces` field in the
+root `package.json` versus a separate `pnpm-workspace.yaml`.
+
+| Artifact | npm | pnpm |
+|---|---|---|
+| README commands | `npm run dev` | `pnpm dev` |
+| Docker install | `npm install` | `corepack enable` + `pnpm install` |
+| Lockfile | `package-lock.json` | `pnpm-lock.yaml` |
+| CI setup | `setup-node` cache: npm | `pnpm/action-setup` + cache: pnpm |
+| Monorepo declaration | `workspaces` field | `pnpm-workspace.yaml` |
+| Internal dep | `"@app/types": "*"` | `"@app/types": "workspace:*"` |
+
+**Generated projects use plain installs, never frozen ones.** protos cannot
+produce a lockfile — that would mean running the package manager, which §3.6
+forbids — so a generated `Dockerfile` or CI job using `npm ci` or
+`pnpm install --frozen-lockfile` would fail on its first run. The README tells
+the user to commit a lockfile after their first install. Reproducibility is
+theirs to opt into; a scaffold that cannot build is not.
+
+v1 supports npm (default) and pnpm. yarn and bun are deliberately excluded:
+yarn's classic/berry split is two strategies wearing one name, and bun moves
+fast enough that generated projects would rot between smoke runs. Both are
+drop-in strategy files if that changes.
+
+### 3.5 Architecture is a strategy of path roles
+
+protos was pitched (§1) as configuring folder structure, so architecture is
+selectable rather than fixed per base. The obstacle is that a layer writing
+`src/lib/db.ts` has hardcoded someone's folder convention.
+
+So **layers name roles, not paths**. `db-client`, `component`, `service`,
+`controller` — the architecture resolves each to a location:
+
+| Role | express/layered | express/modular | react/type-based | react/feature-based |
+|---|---|---|---|---|
+| `db-client` | `src/lib/db.ts` | `src/shared/db.ts` | `src/lib/db.ts` | `src/lib/db.ts` |
+| `component` | — | — | `src/components/X.tsx` | `src/features/x/X.tsx` |
+| `store` | — | — | `src/store/x.ts` | `src/features/x/store.ts` |
+| `route` | `src/routes/x.route.ts` | `src/modules/x/x.route.ts` | — | — |
+| `controller` | `src/controllers/x.controller.ts` | `src/modules/x/x.controller.ts` | — | — |
+| `service` | `src/services/x.service.ts` | `src/modules/x/x.service.ts` | — | — |
+
+An architecture throws on a role it has no home for, rather than inventing a
+path. Shared infrastructure stays in `src/lib` under both React-family
+architectures: feature-based organisation applies to feature code, and burying
+the database client inside one feature would make it harder to find, not
+easier. The modular Express architecture is the exception — it groups shared
+code under `src/shared`, which is that ecosystem's convention, and the role
+table above is authoritative.
+
+**How much choice exists depends on the framework.** Next.js and Expo impose
+file-based routing, so their only real axis is how non-route code is organised
+— offering "MVC" there would be a lie. Express imposes nothing, which is where
+the choice genuinely matters.
+
+| Base | v1 architectures | Default |
+|---|---|---|
+| `next`, `vite-react`, `expo` | `type-based`, `feature-based` | `type-based` |
+| `express` | `layered`, `modular` | `layered` |
+
+Invalid pairings are rejected by the schema, not silently coerced.
+
+**Every architecture must generate a working vertical slice.** Emitting
+`src/domain/`, `src/application/`, and `src/infrastructure/` with nothing in
+them is cargo cult, not architecture. Each option ships a path that actually
+runs — for the React family, a page importing a component through the chosen
+location; for Express in Plan 2, a route through controller and service with a
+passing test.
+
+### 3.6 No code execution during generation
 
 protos never shells out, never runs `create-next-app`, never executes user
 input. Generation is pure in-memory data transformation. This rules out an
@@ -84,10 +161,13 @@ type LayerId  = 'tailwind' | 'tanstack-query' | 'zustand' | 'zod'
               | 'pino' | 'helmet' | 'rate-limit'
               | 'eslint-prettier' | 'vitest' | 'docker' | 'gh-actions'
 type LayoutId = 'siblings' | 'separate' | 'monorepo'
+type PmId     = 'npm' | 'pnpm'
+type ArchId   = 'type-based' | 'feature-based' | 'layered' | 'modular'
 
 type AppSpec = {
   id: string                        // 'api' | 'web' | 'mobile'
   base: BaseId
+  arch: ArchId                      // defaults per base; validated against it
   layers: LayerId[]
   options: Record<string, string>   // e.g. { db: 'postgres' }
 }
@@ -96,6 +176,7 @@ type ProtosConfig = {
   v: 1                              // schema version, for forward compat
   name: string                      // ^[a-z0-9][a-z0-9-]{0,38}$
   layout: LayoutId
+  pm: PmId                          // default 'npm'
   apps: AppSpec[]                   // 1–2 apps
   layers: LayerId[]                 // root-level: docker, gh-actions
 }
@@ -153,6 +234,13 @@ layer has run.
 | `providers` | `push({ import, component, props })` | `app/layout.tsx` |
 | `middleware` | `push({ import, expr, order })` | `src/server.ts` |
 | `ignore` | `add(pattern)` | `.gitignore`, `.dockerignore` |
+| `sideEffects` | `add(path)` | side-effect imports in the layout |
+
+`sideEffects` was added during implementation: the `tailwind` layer wrote
+`globals.css` but nothing imported it, so the stylesheet was dead code and
+Tailwind silently never applied — a bug an install-and-build smoke test passes
+straight through. A layer cannot patch the base's `layout.tsx`, so the layer
+registers the file and the base decides where the import statement goes.
 
 This is why `tanstack-query` and a theme provider can both wrap the root layout
 without either knowing the other exists, and why layer execution order does not
@@ -173,21 +261,24 @@ interface Layer {
   requires?: LayerId[]
   conflictsWith?: LayerId[]
   options?: LayerOptionSchema        // e.g. prisma: db = postgres | mysql
+  /** Paths contributed under a given architecture, for the UI preview. */
+  manifest(arch: ArchitectureStrategy): string[]
   apply(tree: FileTree, ctx: Ctx): void
 }
 
 interface Ctx {
   app: AppSpec
   project: { name: string; layout: LayoutId }
-  docker: DockerStrategy             // supplied by the Assembler
-  ci: CiStrategy                     // supplied by the Assembler
+  pm: PackageManagerStrategy         // derived from cfg.pm
+  arch: ArchitectureStrategy         // derived from the app's arch
   sibling?: AppSpec                  // the other app, if any
 }
 ```
 
-Layers receive layout-dependent behaviour through `ctx.docker` and `ctx.ci`
-rather than branching on `ctx.project.layout` themselves. Nothing else in a
-layer is layout-aware.
+Layers never receive `DockerStrategy` or `CiStrategy` — those belong to root
+layers (below), which is what keeps per-app layers layout-agnostic by
+construction rather than by convention. They do receive `ctx.pm`, because a
+layer that documents a command in the README needs to name the right one.
 
 #### Root-level layers
 
@@ -237,10 +328,10 @@ type Deliverable = { name: string; tree: Map<string, string> }
 |---|---|---|---|
 | Placement | `hrims-backend/` | own deliverable each | `apps/api/` |
 | Deliverables | 1 | N | 1 |
-| Root files | README, `docker-compose.yml`, `.gitignore` | none | + `pnpm-workspace.yaml`, `turbo.json`, root `package.json` |
+| Root files | README, `docker-compose.yml`, `.gitignore` | none | + workspace declaration, `turbo.json`, root `package.json` |
 | Package names | plain | plain | scoped `@hrims/api` |
 | devDeps | per app | per app | hoisted to root |
-| Shared types | none | none | `packages/types`, `workspace:*` |
+| Shared types | none | none | `packages/types`, via `pm.internalDep()` |
 | Dockerfile | plain multi-stage | plain multi-stage | `turbo prune` multi-stage |
 | CI | per-app jobs | per-app jobs | single install + turbo cache |
 
@@ -249,8 +340,11 @@ type Deliverable = { name: string; tree: Map<string, string> }
 keeps the `prisma` layer completely layout-agnostic. Revisit only if a real
 need for a shared schema appears.
 
-**Monorepo is opinionated:** pnpm workspaces + Turborepo. No npm or yarn
-workspace variants — one well-tested path rather than a matrix.
+**Monorepo uses Turborepo** over whichever package manager's workspaces the
+config selected. Turborepo is package-manager agnostic; the workspace
+declaration and internal dependency protocol come from
+`PackageManagerStrategy` (§3.4), so the assembler never branches on the
+package manager itself.
 
 **`packages/types`** is emitted by the monorepo assembler only when a project
 contains both a backend and a frontend. It holds shared request/response types
@@ -324,9 +418,10 @@ files tying them together.
 | `docker` | root-level | — | Dockerfile per app + compose |
 | `gh-actions` | root-level | — | install, lint, test, build |
 
-Express follows layer-based organization (routes / controllers / services /
-models), per the user's stated default. Next.js and Expo follow their
-frameworks' own conventions.
+Architecture is selected per app, not fixed per base — see §3.5 for the role
+table and the valid pairings. Express defaults to layer-based organization
+(routes / controllers / services / models), per the user's stated default;
+the React-family bases default to type-based.
 
 ### Compatibility rules
 
@@ -361,7 +456,7 @@ The URL rewrites on every change (`history.replaceState`), so sharing is
 copying the address bar.
 
 **The preview computes paths only, never file contents.** Each layer declares a
-static `manifest: string[]` of the paths it contributes, so the client renders
+a `manifest(arch)` of the paths it contributes, so the client renders
 the tree from catalog metadata alone — no base templates are shipped to the
 browser and no generation runs client-side. The server remains the single
 authority for actual file contents. This keeps the bundle small and means the
@@ -416,6 +511,14 @@ Roughly 10 representative configs are generated for real, then
 9. `next` minimal (base only, no layers)
 10. maximal config — every compatible layer on a two-app monorepo
 
+Architecture is a fifth axis and package manager a fourth. Both are covered by
+swapping rather than multiplying: one config runs feature-based architecture
+and the rest type-based.
+
+Package manager swaps the same way:
+configs 2 and 5 run **pnpm**, the rest run npm. Config 5 matters most — it is
+the only one exercising `workspace:*` and `pnpm-workspace.yaml` together.
+
 Layout is the third axis, and configs 4–6 exist specifically to cover it. This
 is a curated set, not a cross-product; a full matrix would be unusable.
 
@@ -431,6 +534,7 @@ Detected from nothing — this is a greenfield repo, so defaults apply.
 |---|---|---|
 | Framework | Next.js (App Router, TypeScript) | UI plus the streaming generate endpoints in one deploy |
 | Runtime | Node LTS | per dependency policy |
+| Package manager | npm | protos is a single app with no workspaces; nothing here needs pnpm |
 | Styling | Tailwind | |
 | Client state | Zustand | the config *is* client state |
 | Server state | none | there is nothing to fetch; TanStack Query would be unused |
@@ -439,6 +543,9 @@ Detected from nothing — this is a greenfield repo, so defaults apply.
 | Formatting | Prettier, applied to generated output | |
 | Tests | Vitest | |
 | Hosting | Vercel | |
+
+protos using npm is independent of what it generates. CI installs pnpm as a
+tool so the smoke tier can build generated pnpm projects.
 
 Exact versions are resolved at implementation time against current docs
 (latest stable for libraries, LTS for the runtime), not pinned here.
@@ -469,6 +576,39 @@ protos/
 engine testable in isolation and leaves the door open to extracting it as a
 package if a future CLI ever needs to run offline.
 
+## 12a. Verified version realities
+
+Implementation checked every version against the registry and current docs
+rather than trusting training data. Four findings changed the design:
+
+| Package | Decision | Why |
+|---|---|---|
+| Next.js | `^16.3.2` | Latest stable major; mature well past x.1 |
+| TypeScript | `^5.9.3` for generated projects | 6.0 and 7.0 are both live but still at x.0. The dependency policy avoids day-one majors, and create-next-app itself still installs ^5 |
+| `@types/node` | `^24` | Tracks Node **LTS**, not Current (26) |
+| Prisma | `^7.9.1`, with driver adapters | See below |
+| Zod | `^4` | `.superRefine()` must precede `.transform()`; refinements live inside schemas in v4 |
+
+**Prisma 7 differs from 6 in four ways that all matter to a generator:**
+
+1. The generator is `prisma-client`, not the removed `prisma-client-js`.
+2. It needs an explicit `output`, and the client is imported from that path
+   rather than from `@prisma/client`.
+3. A driver adapter is **required** — `@prisma/adapter-pg` for Postgres,
+   `@prisma/adapter-mariadb` for MySQL.
+4. `url` is no longer permitted in the `datasource` block; it moves to
+   `prisma.config.ts`. The CLI also no longer auto-loads `.env`, so that file
+   needs an explicit `dotenv` import.
+
+Any one of these produces a project that installs but cannot build. They were
+caught by tier 3, not by tiers 1 or 2 — which is the argument for tier 3 in
+miniature.
+
+**The generated `tsconfig.json` mirrors create-next-app's output exactly**
+(`target: ES2017`, `jsx: react-jsx`, and the `.next/dev/types` include). Any
+drift makes Next rewrite the file on first build, which is a poor first
+impression from a scaffolding tool.
+
 ## 13. Sequencing
 
 | Milestone | Scope |
@@ -489,4 +629,5 @@ implementations would risk designing it wrong and paying to redo it.
 2. Generation completes in under 300ms server-side.
 3. A share link fully reconstructs someone else's configuration.
 4. Adding a new layer touches exactly one file plus its tests.
-5. protos stores nothing about anyone.
+5. Every architecture produces a project that runs, not a tree of empty folders.
+6. protos stores nothing about anyone.
