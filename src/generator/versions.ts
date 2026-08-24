@@ -46,7 +46,8 @@ export const VERSIONS: Record<string, string> = {
   '@vitejs/plugin-react': '^6.1.0',
   expo: '^57.0.15',
   'expo-router': '^57.0.15',
-  'react-native': '^0.87.0',
+  // Pinned by the Expo SDK, not chosen: Expo 57 bundles RN 0.86.2.
+  'react-native': '~0.86.2',
   'react-native-web': '^0.21.2',
   '@tanstack/react-query': '^5.102.2',
   '@tanstack/react-table': '^8.21.3',

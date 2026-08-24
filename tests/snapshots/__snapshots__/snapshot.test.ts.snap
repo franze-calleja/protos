@@ -233,7 +233,7 @@ demo/demo-mobile/app.json  26b86fc34013
 demo/demo-mobile/app/_layout.tsx  768d6f7bfc65
 demo/demo-mobile/app/index.tsx  335952a798f4
 demo/demo-mobile/jest.config.js  e39f7c5d5c2b
-demo/demo-mobile/package.json  8bf6dc417554
+demo/demo-mobile/package.json  519963d5e7a4
 demo/demo-mobile/src/components/Hello.tsx  4a87623c8011
 demo/demo-mobile/src/lib/greet.ts  3f65a10fca4e
 demo/demo-mobile/src/providers/QueryProvider.tsx  4123dde8dd6a

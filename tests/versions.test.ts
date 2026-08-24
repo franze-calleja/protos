@@ -10,9 +10,16 @@ describe('version registry', () => {
     expect(() => dep('not-a-real-package')).toThrow(/No pinned version/)
   })
 
-  it('pins every entry to an exact caret range, never a tag', () => {
+  it('pins every entry to an exact range, never a tag', () => {
     for (const [name, version] of Object.entries(VERSIONS)) {
-      expect(version, name).toMatch(/^\^\d+\.\d+\.\d+$/)
+      // ~ is allowed: Expo-managed packages pin tighter than caret on purpose.
+      expect(version, name).toMatch(/^[\^~]\d+\.\d+\.\d+$/)
     }
+  })
+})
+
+describe('expo-managed versions', () => {
+  it('pins react-native tighter than caret, because Expo decides it', () => {
+    expect(VERSIONS['react-native']).toMatch(/^~/)
   })
 })
