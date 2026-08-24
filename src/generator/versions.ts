@@ -41,6 +41,10 @@ export const VERSIONS: Record<string, string> = {
   '@eslint/js': '^10.0.1',
   'eslint-config-next': '^16.3.2',
 
+  // frontend
+  vite: '^8.2.2',
+  '@vitejs/plugin-react': '^6.1.0',
+
   // styling
   tailwindcss: '^4.3.3',
   '@tailwindcss/postcss': '^4.3.3',
