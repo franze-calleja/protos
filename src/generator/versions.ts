@@ -48,6 +48,14 @@ export const VERSIONS: Record<string, string> = {
   'expo-router': '^57.0.15',
   'react-native': '^0.87.0',
   'react-native-web': '^0.21.2',
+  '@tanstack/react-query': '^5.102.2',
+  '@tanstack/react-table': '^9.1.2',
+  zustand: '^5.0.15',
+  'react-hook-form': '^7.86.0',
+  '@hookform/resolvers': '^5.9.1',
+  jest: '^30.4.2',
+  'jest-expo': '^57.0.4',
+  '@types/jest': '^30.0.0',
 
   // styling
   tailwindcss: '^4.3.3',
