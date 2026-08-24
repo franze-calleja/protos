@@ -49,7 +49,7 @@ export const VERSIONS: Record<string, string> = {
   'react-native': '^0.87.0',
   'react-native-web': '^0.21.2',
   '@tanstack/react-query': '^5.102.2',
-  '@tanstack/react-table': '^9.1.2',
+  '@tanstack/react-table': '^8.21.3',
   zustand: '^5.0.15',
   'react-hook-form': '^7.86.0',
   '@hookform/resolvers': '^5.9.1',

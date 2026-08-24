@@ -71,3 +71,9 @@ describe('vite-react base', () => {
     expect(build().read('vite.config.ts')).toContain('alias')
   })
 })
+
+describe('vite client types', () => {
+  it('ships vite-env.d.ts, without which import.meta.env has no types', () => {
+    expect(build().read('src/vite-env.d.ts')).toContain('vite/client')
+  })
+})

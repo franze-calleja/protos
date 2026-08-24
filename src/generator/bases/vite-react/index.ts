@@ -3,7 +3,7 @@ import type { Base } from '../types'
 import type { FileTree } from '../../tree/file-tree'
 import type { LayerCtx } from '../../layers/types'
 import { dep } from '../../versions'
-import { TSCONFIG, VITE_CONFIG, INDEX_HTML, HELLO_COMPONENT } from './files'
+import { TSCONFIG, VITE_CONFIG, INDEX_HTML, VITE_ENV_DTS, HELLO_COMPONENT } from './files'
 
 export const viteReactBase: Base = {
   id: 'vite-react',
@@ -19,6 +19,7 @@ export const viteReactBase: Base = {
     tree.write('tsconfig.json', TSCONFIG)
     tree.write('vite.config.ts', VITE_CONFIG)
     tree.write('index.html', INDEX_HTML)
+    tree.write('src/vite-env.d.ts', VITE_ENV_DTS)
 
     const componentPath = ctx.arch.path('component', 'Hello')
     tree.write(componentPath, HELLO_COMPONENT)

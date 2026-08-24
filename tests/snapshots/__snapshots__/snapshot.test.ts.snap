@@ -175,7 +175,7 @@ exports[`canonical config snapshots > matches the recorded manifest for 08-vite-
 "demo/demo-web/.gitignore  434f905dc6e1
 demo/demo-web/README.md  9111a2ca9fab
 demo/demo-web/index.html  3dbcf875b7df
-demo/demo-web/package.json  f36fdd80b550
+demo/demo-web/package.json  2640ef7edd7a
 demo/demo-web/postcss.config.mjs  a0247228772d
 demo/demo-web/src/App.tsx  0c62640275f6
 demo/demo-web/src/features/example-form/ExampleForm.tsx  c867135f3887
@@ -183,10 +183,11 @@ demo/demo-web/src/features/example-table/ExampleTable.tsx  a9bd23db78fe
 demo/demo-web/src/features/hello/Hello.tsx  17bc8873505a
 demo/demo-web/src/features/use-counter/store.ts  5f0b6c60e53d
 demo/demo-web/src/index.css  11b8e69e89a3
-demo/demo-web/src/lib/env.ts  fd13a730204b
+demo/demo-web/src/lib/env.ts  5538d88a6ded
 demo/demo-web/src/lib/greet.ts  3f65a10fca4e
 demo/demo-web/src/main.tsx  171239795f3f
 demo/demo-web/src/providers/QueryProvider.tsx  4123dde8dd6a
+demo/demo-web/src/vite-env.d.ts  65996936fbb0
 demo/demo-web/tests/example.test.ts  08735dd70c76
 demo/demo-web/tsconfig.json  dce7a97428f5
 demo/demo-web/vite.config.ts  af31459cd969

@@ -44,6 +44,10 @@ export const INDEX_HTML = `<!doctype html>
 </html>
 `
 
+/** Gives import.meta.env its types — every Vite scaffold ships this. */
+export const VITE_ENV_DTS = `/// <reference types="vite/client" />
+`
+
 export const HELLO_COMPONENT = `export function Hello() {
   return <h1>It works</h1>
 }
