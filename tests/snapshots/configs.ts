@@ -154,4 +154,50 @@ export const CANONICAL_CONFIGS: { name: string; config: ProtosConfig }[] = [
       layers: [],
     },
   },
+  {
+    name: '08-vite-react-full-npm',
+    config: {
+      v: 1,
+      name: 'demo',
+      layout: 'siblings',
+      pm: 'npm',
+      apps: [
+        {
+          id: 'web',
+          base: 'vite-react',
+          arch: 'feature-based',
+          layers: [
+            'tailwind',
+            'tanstack-query',
+            'zustand',
+            'zod',
+            'react-hook-form',
+            'tanstack-table',
+            'vitest',
+          ],
+          options: {},
+        },
+      ],
+      layers: [],
+    },
+  },
+  {
+    name: '11-expo-npm',
+    config: {
+      v: 1,
+      name: 'demo',
+      layout: 'siblings',
+      pm: 'npm',
+      apps: [
+        {
+          id: 'mobile',
+          base: 'expo',
+          arch: 'type-based',
+          layers: ['tanstack-query', 'zustand', 'jest-expo'],
+          options: {},
+        },
+      ],
+      layers: [],
+    },
+  },
 ]

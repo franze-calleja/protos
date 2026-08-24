@@ -171,6 +171,29 @@ demo-web/src/components/Hello.tsx  17bc8873505a
 demo-web/tsconfig.json  f23c3b4f2520"
 `;
 
+exports[`canonical config snapshots > matches the recorded manifest for 08-vite-react-full-npm 1`] = `
+"demo/demo-web/.gitignore  434f905dc6e1
+demo/demo-web/README.md  9111a2ca9fab
+demo/demo-web/index.html  3dbcf875b7df
+demo/demo-web/package.json  2640ef7edd7a
+demo/demo-web/postcss.config.mjs  a0247228772d
+demo/demo-web/src/App.tsx  0c62640275f6
+demo/demo-web/src/features/example-form/ExampleForm.tsx  c867135f3887
+demo/demo-web/src/features/example-table/ExampleTable.tsx  a9bd23db78fe
+demo/demo-web/src/features/hello/Hello.tsx  17bc8873505a
+demo/demo-web/src/features/use-counter/store.ts  5f0b6c60e53d
+demo/demo-web/src/index.css  11b8e69e89a3
+demo/demo-web/src/lib/env.ts  5538d88a6ded
+demo/demo-web/src/lib/greet.ts  3f65a10fca4e
+demo/demo-web/src/main.tsx  171239795f3f
+demo/demo-web/src/providers/QueryProvider.tsx  4123dde8dd6a
+demo/demo-web/src/vite-env.d.ts  65996936fbb0
+demo/demo-web/tests/example.test.ts  08735dd70c76
+demo/demo-web/tsconfig.json  dce7a97428f5
+demo/demo-web/vite.config.ts  af31459cd969
+demo/demo-web/vitest.config.ts  dc9eab028d9c"
+`;
+
 exports[`canonical config snapshots > matches the recorded manifest for 09-next-minimal-npm 1`] = `
 "demo/demo-web/.gitignore  d44656612f08
 demo/demo-web/README.md  6e702151e4b4
@@ -201,4 +224,20 @@ demo/demo-web/src/features/hello/Hello.tsx  17bc8873505a
 demo/demo-web/src/lib/db.ts  2648c4aa20b1
 demo/demo-web/tsconfig.json  f23c3b4f2520
 demo/docker-compose.yml  cdd372668d15"
+`;
+
+exports[`canonical config snapshots > matches the recorded manifest for 11-expo-npm 1`] = `
+"demo/demo-mobile/.gitignore  e2119bcdd3cd
+demo/demo-mobile/README.md  ae16ea44592b
+demo/demo-mobile/app.json  26b86fc34013
+demo/demo-mobile/app/_layout.tsx  768d6f7bfc65
+demo/demo-mobile/app/index.tsx  335952a798f4
+demo/demo-mobile/jest.config.js  e39f7c5d5c2b
+demo/demo-mobile/package.json  519963d5e7a4
+demo/demo-mobile/src/components/Hello.tsx  4a87623c8011
+demo/demo-mobile/src/lib/greet.ts  3f65a10fca4e
+demo/demo-mobile/src/providers/QueryProvider.tsx  4123dde8dd6a
+demo/demo-mobile/src/store/useCounter.ts  5f0b6c60e53d
+demo/demo-mobile/tests/example.test.ts  324bcb8e4f75
+demo/demo-mobile/tsconfig.json  928fc45c919a"
 `;

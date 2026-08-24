@@ -5,6 +5,8 @@ const PATHS: Partial<Record<PathRole, (name: string) => string>> = {
   store: (n) => `src/store/${n}.ts`,
   util: (n) => `src/lib/${n}.ts`,
   'db-client': () => 'src/lib/db.ts',
+  // App-wide infrastructure, not feature code — shared under both architectures.
+  provider: (n) => `src/providers/${n}.tsx`,
 }
 
 export const typeBasedArch: ArchitectureStrategy = {

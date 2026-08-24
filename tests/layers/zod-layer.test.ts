@@ -48,3 +48,26 @@ describe('zod layer', () => {
     for (const p of tree.paths()) expect(zodLayer.manifest(c.arch, c.app.base)).toContain(p)
   })
 })
+
+describe('the env module suits its ecosystem', () => {
+  const forBase = (base: 'express' | 'vite-react' | 'expo'): string => {
+    const tree = new FileTree()
+    zodLayer.apply(tree, { ...ctx(), app: { ...ctx().app, base } })
+    return tree.read('src/lib/env.ts')!
+  }
+
+  it('reads process.env for a Node base', () => {
+    expect(forBase('express')).toContain('process.env')
+  })
+
+  it('reads import.meta.env for Vite, which has no process global', () => {
+    const module = forBase('vite-react')
+    expect(module).toContain('import.meta.env')
+    expect(module).not.toContain('process.env')
+    expect(module).toContain('VITE_')
+  })
+
+  it('uses the EXPO_PUBLIC prefix for Expo', () => {
+    expect(forBase('expo')).toContain('EXPO_PUBLIC_')
+  })
+})

@@ -6,6 +6,7 @@ import type { ArchId } from '../config/types'
  */
 export type PathRole =
   | 'component'
+  | 'provider'
   | 'store'
   | 'util'
   | 'db-client'

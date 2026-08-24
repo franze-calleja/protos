@@ -41,6 +41,23 @@ export const VERSIONS: Record<string, string> = {
   '@eslint/js': '^10.0.1',
   'eslint-config-next': '^16.3.2',
 
+  // frontend
+  vite: '^8.2.2',
+  '@vitejs/plugin-react': '^6.1.0',
+  expo: '^57.0.15',
+  'expo-router': '^57.0.15',
+  // Pinned by the Expo SDK, not chosen: Expo 57 bundles RN 0.86.2.
+  'react-native': '~0.86.2',
+  'react-native-web': '^0.21.2',
+  '@tanstack/react-query': '^5.102.2',
+  '@tanstack/react-table': '^8.21.3',
+  zustand: '^5.0.15',
+  'react-hook-form': '^7.86.0',
+  '@hookform/resolvers': '^5.9.1',
+  jest: '^30.4.2',
+  'jest-expo': '^57.0.4',
+  '@types/jest': '^30.0.0',
+
   // styling
   tailwindcss: '^4.3.3',
   '@tailwindcss/postcss': '^4.3.3',

@@ -74,3 +74,19 @@ describe('getArchitecture', () => {
     expect(() => getArchitecture('hexagonal')).toThrow(/not implemented/i)
   })
 })
+
+describe('the provider role', () => {
+  it('resolves to a shared providers folder under both React architectures', () => {
+    for (const id of ['type-based', 'feature-based'] as const) {
+      expect(getArchitecture(id).path('provider', 'QueryProvider'), id).toBe(
+        'src/providers/QueryProvider.tsx'
+      )
+    }
+  })
+
+  it('has no meaning for the backend architectures', () => {
+    for (const id of ['layered', 'modular'] as const) {
+      expect(getArchitecture(id).supports('provider'), id).toBe(false)
+    }
+  })
+})

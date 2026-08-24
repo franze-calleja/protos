@@ -8,6 +8,8 @@ const PATHS: Partial<Record<PathRole, (name: string) => string>> = {
   // wrong home for something every feature depends on.
   util: (n) => `src/lib/${n}.ts`,
   'db-client': () => 'src/lib/db.ts',
+  // App-wide infrastructure, not feature code — shared under both architectures.
+  provider: (n) => `src/providers/${n}.tsx`,
 }
 
 export const featureBasedArch: ArchitectureStrategy = {
