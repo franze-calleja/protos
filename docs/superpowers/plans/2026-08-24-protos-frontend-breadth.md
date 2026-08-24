@@ -12,6 +12,26 @@
 
 **Predecessors:** Plans 1–3, all executed and merged (PRs #1, #2). Read their execution-notes headers — particularly the recurring lesson that generalising one library's API to its sibling is where the bugs come from.
 
+> **Execution notes (2026-08-24).** Four defects, three sharing one root cause:
+> **trusting npm's `latest` tag over what the ecosystem actually supports.**
+>
+> 1. **TanStack Table pinned back to v8.** v9 exports `useTable` and
+>    `createCoreRowModel`, not `useReactTable`/`getCoreRowModel` — and its own
+>    docs still document v8 as latest. v9.0.0 arrived after 100+ prereleases.
+>    Generated v9 code would not match anything a user could look up.
+> 2. **React Native pinned to what Expo bundles.** Expo 57 ships RN 0.86.2;
+>    `^0.87.0` broke Metro with `ERR_PACKAGE_PATH_NOT_EXPORTED`. RN's version is
+>    decided by the SDK, not chosen — that is what `expo install` is for. It
+>    pins with `~`, so the registry now permits both range styles.
+> 3. **The zod env module was Node-shaped** while the layer claimed to support
+>    Vite and Expo. `process.env` does not exist in a Vite app. Now base-aware:
+>    `process.env`, `import.meta.env` with a `VITE_` prefix, or `EXPO_PUBLIC_`.
+> 4. **`src/vite-env.d.ts` was missing**, without which `import.meta.env` has
+>    no types.
+>
+> `expo export --platform web` proved to be a real build (820 modules, 3 static
+> routes), so the `tsc --noEmit` fallback this plan allowed for was not needed.
+
 ## Global Constraints
 
 - **No database, no persistence, no code execution during generation.**
