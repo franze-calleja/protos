@@ -128,11 +128,20 @@ describe('prisma 7 configuration', () => {
     expect(tree.read('prisma/schema.prisma')).not.toContain('url')
   })
 
+  it('lets generate run without a database url, so docker builds work', () => {
+    const tree = new FileTree()
+    prismaLayer.apply(tree, ctx('postgres'))
+    const config = tree.read('prisma.config.ts')!
+    // A hard env() throw here breaks prisma generate inside an image, where
+    // .env is deliberately absent.
+    expect(config).toContain('url ? { datasource:')
+  })
+
   it('supplies the connection url through prisma.config.ts instead', () => {
     const tree = new FileTree()
     prismaLayer.apply(tree, ctx('postgres'))
     const config = tree.read('prisma.config.ts')!
-    expect(config).toContain("env<Env>('DATABASE_URL')")
+    expect(config).toContain('process.env.DATABASE_URL')
     // Prisma 7 stopped auto-loading .env.
     expect(config).toContain("import 'dotenv/config'")
     expect(tree.pkg.render()).toContain('dotenv')

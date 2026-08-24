@@ -68,7 +68,7 @@ describe('siblings assembler', () => {
       .dockerStrategy(getPackageManager('pnpm'))
       .dockerfile(apps()[0], 'hrims-api')
     expect(df).toContain('corepack enable')
-    expect(df).toContain('pnpm-lock.yaml')
+    expect(df).toContain('RUN pnpm install')
   })
 
   it('never uses a frozen install, since no lockfile is generated', () => {
@@ -98,5 +98,22 @@ describe('generated Dockerfile base image', () => {
       .dockerfile(apps()[0], 'hrims-api')
     expect(df).toContain('FROM node:lts-alpine')
     expect(df).not.toMatch(/FROM node:\d+-alpine/)
+  })
+})
+
+describe('generated Dockerfile install order', () => {
+  it('copies source before installing, so postinstall scripts have their files', () => {
+    const df = siblingsAssembler
+      .dockerStrategy(getPackageManager('npm'))
+      .dockerfile(apps()[0], 'hrims-api')
+    // prisma generate runs on postinstall and needs prisma/schema.prisma.
+    expect(df.indexOf('COPY . .')).toBeLessThan(df.indexOf('RUN npm install'))
+  })
+
+  it('has no deps-only stage that would install without source', () => {
+    const df = siblingsAssembler
+      .dockerStrategy(getPackageManager('npm'))
+      .dockerfile(apps()[0], 'hrims-api')
+    expect(df).not.toContain('AS deps')
   })
 })

@@ -57,6 +57,9 @@ const TYPES_TSCONFIG = `{
 
 /** The whole workspace is copied rather than pruned — see Plan 3's decisions. */
 const dockerStrategy = (pm: PackageManagerStrategy): DockerStrategy => ({
+  // A workspace app cannot build alone; the context is the whole repo.
+  buildContextIsProjectRoot: true,
+
   dockerfile(app: BuiltApp, appPath: string): string {
     const setup = pm.dockerSetup()
     return [
