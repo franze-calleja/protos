@@ -13,6 +13,8 @@ export interface RootLayer {
   id: LayerId
   label: string
   description: string
+  /** This layer writes at the project root and cannot apply without one. */
+  requiresProjectRoot?: boolean
   /** Skip this layer when no app in the project runs a server. */
   requiresServerApp?: boolean
   manifest: string[]

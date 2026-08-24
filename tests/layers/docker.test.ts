@@ -83,3 +83,26 @@ describe('docker root layer', () => {
     expect(p.apps[0].tree.read('.dockerignore')).toContain('node_modules')
   })
 })
+
+describe('dockerignore placement follows the build context', () => {
+  it('writes it beside each app when the context is the app folder', () => {
+    const p = project()
+    dockerRootLayer.applyRoot(p, ctx)
+    expect(p.apps[0].tree.exists('.dockerignore')).toBe(true)
+    expect(p.root.exists('.dockerignore')).toBe(false)
+  })
+
+  it('writes it at the project root when the context is the repo', async () => {
+    const { monorepoAssembler } = await import('@/generator/assemblers/monorepo')
+    const monoCtx = {
+      ...ctx,
+      docker: monorepoAssembler.dockerStrategy(pm),
+      ci: monorepoAssembler.ciStrategy(pm),
+    }
+    const p = project()
+    dockerRootLayer.applyRoot(p, monoCtx)
+    expect(p.root.read('.dockerignore')).toContain('**/node_modules')
+    // A per-app copy would never be consulted, so it is not written.
+    expect(p.apps[0].tree.exists('.dockerignore')).toBe(false)
+  })
+})

@@ -61,6 +61,12 @@ export interface ProtosConfig {
   layers: LayerId[]
 }
 
+/** Layers that write at the project root rather than inside an app. */
+export const ROOT_LAYER_IDS: readonly LayerId[] = ['docker', 'gh-actions']
+
+/** Layouts with no shared project root, so root layers cannot apply. */
+export const LAYOUTS_WITHOUT_ROOT: readonly LayoutId[] = ['separate']
+
 export const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,38}$/
 export const MAX_APPS = 2
 export const MAX_LAYERS = 25

@@ -6,6 +6,7 @@ export const ghActionsRootLayer: RootLayer = {
   id: 'gh-actions',
   label: 'GitHub Actions',
   description: 'A CI workflow that installs and builds every app',
+  requiresProjectRoot: true,
   manifest: ['.github/workflows/ci.yml'],
 
   applyRoot(project: ProjectTree, ctx: RootCtx): void {

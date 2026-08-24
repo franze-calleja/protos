@@ -2,11 +2,19 @@ import { registerRootLayer } from './root-registry'
 import type { RootCtx, RootLayer } from './root-types'
 import type { ComposeService, ProjectTree } from '../assemblers/types'
 
-const DOCKERIGNORE = `node_modules
+const APP_DOCKERIGNORE = `node_modules
 .next
 dist
 .git
 .env
+`
+
+/** Globs, because a workspace has these directories at several depths. */
+const WORKSPACE_DOCKERIGNORE = `**/node_modules
+**/.next
+**/dist
+.git
+**/.env
 `
 
 const DB_SERVICES: Record<string, ComposeService> = {
@@ -35,6 +43,7 @@ export const dockerRootLayer: RootLayer = {
   id: 'docker',
   label: 'Docker',
   description: 'Dockerfile per app plus a compose file that starts everything',
+  requiresProjectRoot: true,
   requiresServerApp: true,
   manifest: ['docker-compose.yml', 'Dockerfile', '.dockerignore'],
 
@@ -45,8 +54,17 @@ export const dockerRootLayer: RootLayer = {
       if (!app.isServer) continue
       const appPath = project.appPath(app.spec)
       app.tree.write('Dockerfile', ctx.docker.dockerfile(app, appPath))
-      app.tree.write('.dockerignore', DOCKERIGNORE)
+      if (!ctx.docker.buildContextIsProjectRoot) {
+        app.tree.write('.dockerignore', APP_DOCKERIGNORE)
+      }
       services.push(ctx.docker.service(app, appPath))
+    }
+
+    // Docker reads .dockerignore from the build context root. When that is the
+    // project root, a per-app copy is never consulted and node_modules would be
+    // copied into the image.
+    if (ctx.docker.buildContextIsProjectRoot) {
+      project.root.write('.dockerignore', WORKSPACE_DOCKERIGNORE)
     }
 
     // A database service is added because an app actually declared one,

@@ -23,6 +23,12 @@ export interface ComposeService {
 }
 
 export interface DockerStrategy {
+  /**
+   * Whether the build context is the project root rather than the app folder.
+   * Docker reads .dockerignore from the context root, so this decides where
+   * that file has to be written.
+   */
+  buildContextIsProjectRoot: boolean
   /** The Dockerfile for one app, given its path within the deliverable. */
   dockerfile(app: BuiltApp, appPath: string): string
   /** The compose service entry for one app. */
@@ -41,6 +47,8 @@ export interface ProjectTree {
 
 export interface Assembler {
   id: LayoutId
+  /** Whether this layout has a shared project root that root layers can write to. */
+  hasProjectRoot: boolean
   appPath(spec: AppSpec, cfg: ProtosConfig): string
   assemble(apps: BuiltApp[], cfg: ProtosConfig, root: FileTree): Deliverable[]
   dockerStrategy(pm: PackageManagerStrategy): DockerStrategy

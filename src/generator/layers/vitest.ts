@@ -61,6 +61,8 @@ export const vitestLayer: Layer = {
   apply(tree: FileTree, ctx: LayerCtx): void {
     tree.write('vitest.config.ts', CONFIG)
     tree.pkg.addDevDep('vitest', dep('vitest'))
+    // vite depends on esbuild, whose install script fetches a platform binary.
+    tree.pkg.allowBuildScripts(['esbuild'])
     tree.pkg.addScript('test', 'vitest run')
 
     if (ctx.app.base === 'express') {

@@ -63,3 +63,20 @@ describe('gh-actions root layer', () => {
     expect(wf).toContain('pull_request:')
   })
 })
+
+describe('root layer declarations', () => {
+  it('keeps ROOT_LAYER_IDS in step with the registry', async () => {
+    const { ROOT_LAYERS } = await import('@/generator/layers/root-registry')
+    const { ROOT_LAYER_IDS } = await import('@/generator/config/types')
+    await import('@/generator/layers/index')
+    expect([...ROOT_LAYER_IDS].sort()).toEqual(Object.keys(ROOT_LAYERS).sort())
+  })
+
+  it('marks every root layer as needing a project root', async () => {
+    const { ROOT_LAYERS } = await import('@/generator/layers/root-registry')
+    await import('@/generator/layers/index')
+    for (const layer of Object.values(ROOT_LAYERS)) {
+      expect(layer!.requiresProjectRoot, layer!.id).toBe(true)
+    }
+  })
+})

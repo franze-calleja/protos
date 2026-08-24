@@ -20,6 +20,7 @@ export const pnpmStrategy: PackageManagerStrategy = {
     const entries = packages.map((p) => `  '${p}': true`).join('\n')
     return { 'pnpm-workspace.yaml': `allowBuilds:\n${entries}\n` }
   },
+  packageManagerField: () => 'pnpm@11.23.0',
   internalDep: () => 'workspace:*',
   workspaceFiles: (appPaths) => ({
     'pnpm-workspace.yaml': `packages:\n${appPaths.map((p) => `  - '${p}'`).join('\n')}\n`,

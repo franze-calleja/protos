@@ -67,20 +67,22 @@ model Example {
  * hence the explicit dotenv import.
  */
 const PRISMA_CONFIG = `import 'dotenv/config'
-import { defineConfig, env } from 'prisma/config'
+import { defineConfig } from 'prisma/config'
 
-type Env = {
-  DATABASE_URL: string
-}
+/**
+ * The datasource URL is only needed by migration commands. prisma generate
+ * runs at install and build time - including inside Docker images, where .env
+ * is deliberately absent so secrets never ship in a layer - so the URL is
+ * resolved leniently here instead of throwing when the config loads.
+ */
+const url = process.env.DATABASE_URL
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
   },
-  datasource: {
-    url: env<Env>('DATABASE_URL'),
-  },
+  ...(url ? { datasource: { url } } : {}),
 })
 `
 

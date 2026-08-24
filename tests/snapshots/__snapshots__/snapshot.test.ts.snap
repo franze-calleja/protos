@@ -18,13 +18,13 @@ exports[`canonical config snapshots > matches the recorded manifest for 02-next-
 demo/demo-web/.env  388021020131
 demo/demo-web/.env.example  6d7547d359d5
 demo/demo-web/.gitignore  e794b616b5a7
-demo/demo-web/Dockerfile  a13babd10e78
+demo/demo-web/Dockerfile  e177be5800e4
 demo/demo-web/README.md  0f7f376c2b30
 demo/demo-web/next.config.ts  eb339f94d0df
 demo/demo-web/package.json  89b3d3fb5d31
 demo/demo-web/pnpm-workspace.yaml  3d82d7568f56
 demo/demo-web/postcss.config.mjs  a0247228772d
-demo/demo-web/prisma.config.ts  1c477516bcc2
+demo/demo-web/prisma.config.ts  c192d18e96f0
 demo/demo-web/prisma/schema.prisma  1c9517ad3f9c
 demo/demo-web/src/app/globals.css  11b8e69e89a3
 demo/demo-web/src/app/layout.tsx  facb3c7c80fb
@@ -41,10 +41,10 @@ demo/demo-api/.dockerignore  02c611cb82f9
 demo/demo-api/.env  0a9ddccdd549
 demo/demo-api/.env.example  201b132f4e92
 demo/demo-api/.gitignore  136233734ac4
-demo/demo-api/Dockerfile  bdedb3cb347b
+demo/demo-api/Dockerfile  fd213bcfcfb2
 demo/demo-api/README.md  4159ebd64270
 demo/demo-api/package.json  22fd56b0b595
-demo/demo-api/prisma.config.ts  1c477516bcc2
+demo/demo-api/prisma.config.ts  c192d18e96f0
 demo/demo-api/prisma/schema.prisma  557f86acebac
 demo/demo-api/src/app.ts  3ffbe2bcb798
 demo/demo-api/src/controllers/health.controller.ts  18cdad47a3a8
@@ -80,6 +80,97 @@ demo/demo-api/tsconfig.json  bc0b34e0512d
 demo/demo-api/vitest.config.ts  dc9eab028d9c"
 `;
 
+exports[`canonical config snapshots > matches the recorded manifest for 05-express-next-siblings-npm 1`] = `
+"demo/.github/workflows/ci.yml  86c818926b59
+demo/demo-api/.dockerignore  02c611cb82f9
+demo/demo-api/.gitignore  434f905dc6e1
+demo/demo-api/Dockerfile  fd213bcfcfb2
+demo/demo-api/README.md  b2c99ec0ff91
+demo/demo-api/package.json  90a8844cc92e
+demo/demo-api/src/app.ts  cd9746d7eea3
+demo/demo-api/src/controllers/health.controller.ts  18cdad47a3a8
+demo/demo-api/src/index.ts  a3b8da40f58c
+demo/demo-api/src/lib/env.ts  fd13a730204b
+demo/demo-api/src/lib/logger.ts  7b894187582e
+demo/demo-api/src/routes/health.route.ts  71dfbf016afd
+demo/demo-api/src/services/health.service.ts  8ed7ca212908
+demo/demo-api/tsconfig.json  bc0b34e0512d
+demo/demo-web/.dockerignore  02c611cb82f9
+demo/demo-web/.gitignore  d44656612f08
+demo/demo-web/Dockerfile  fd213bcfcfb2
+demo/demo-web/README.md  6e702151e4b4
+demo/demo-web/next.config.ts  eb339f94d0df
+demo/demo-web/package.json  b41890a4204a
+demo/demo-web/postcss.config.mjs  a0247228772d
+demo/demo-web/src/app/globals.css  11b8e69e89a3
+demo/demo-web/src/app/layout.tsx  facb3c7c80fb
+demo/demo-web/src/app/page.tsx  2f8898a70fa0
+demo/demo-web/src/components/Hello.tsx  17bc8873505a
+demo/demo-web/tsconfig.json  f23c3b4f2520
+demo/docker-compose.yml  b9a409556ce4"
+`;
+
+exports[`canonical config snapshots > matches the recorded manifest for 06-express-next-monorepo-pnpm 1`] = `
+"demo/.dockerignore  ab82e4c78804
+demo/.github/workflows/ci.yml  0421cc9e9283
+demo/apps/api/.env  388021020131
+demo/apps/api/.env.example  6d7547d359d5
+demo/apps/api/.gitignore  136233734ac4
+demo/apps/api/Dockerfile  168cf89a5976
+demo/apps/api/README.md  661aec682493
+demo/apps/api/package.json  98dee636a129
+demo/apps/api/prisma.config.ts  c192d18e96f0
+demo/apps/api/prisma/schema.prisma  1c9517ad3f9c
+demo/apps/api/src/app.ts  096301e7c63a
+demo/apps/api/src/index.ts  a3b8da40f58c
+demo/apps/api/src/modules/health/health.controller.ts  037d24d464a3
+demo/apps/api/src/modules/health/health.route.ts  1952d2050fe5
+demo/apps/api/src/modules/health/health.service.ts  8ed7ca212908
+demo/apps/api/src/shared/db.ts  bbb2e00ff1b2
+demo/apps/api/src/shared/env.ts  fd13a730204b
+demo/apps/api/tsconfig.json  bc0b34e0512d
+demo/apps/web/.gitignore  d44656612f08
+demo/apps/web/Dockerfile  aff756909f00
+demo/apps/web/README.md  1170f64b786d
+demo/apps/web/next.config.ts  eb339f94d0df
+demo/apps/web/package.json  dcdc2cb49297
+demo/apps/web/postcss.config.mjs  a0247228772d
+demo/apps/web/src/app/globals.css  11b8e69e89a3
+demo/apps/web/src/app/layout.tsx  facb3c7c80fb
+demo/apps/web/src/app/page.tsx  781a1dd86547
+demo/apps/web/src/features/hello/Hello.tsx  17bc8873505a
+demo/apps/web/tsconfig.json  f23c3b4f2520
+demo/docker-compose.yml  933c9542ad6d
+demo/package.json  2bafe2705ef9
+demo/packages/types/package.json  9b49197a12cd
+demo/packages/types/src/index.ts  bbf9f30e352b
+demo/packages/types/tsconfig.json  2403892012e6
+demo/pnpm-workspace.yaml  babb85edee0b
+demo/turbo.json  c351b11e37b1"
+`;
+
+exports[`canonical config snapshots > matches the recorded manifest for 07-express-next-separate-npm 1`] = `
+"demo-api/.gitignore  434f905dc6e1
+demo-api/README.md  b2c99ec0ff91
+demo-api/package.json  15dcdb7a1ee2
+demo-api/src/app.ts  3f01ff1d3d2a
+demo-api/src/controllers/health.controller.ts  18cdad47a3a8
+demo-api/src/index.ts  a3b8da40f58c
+demo-api/src/routes/health.route.ts  71dfbf016afd
+demo-api/src/services/health.service.ts  8ed7ca212908
+demo-api/tests/health.test.ts  241ddc9f2246
+demo-api/tsconfig.json  bc0b34e0512d
+demo-api/vitest.config.ts  dc9eab028d9c
+demo-web/.gitignore  d44656612f08
+demo-web/README.md  6e702151e4b4
+demo-web/next.config.ts  eb339f94d0df
+demo-web/package.json  9c13f31e5444
+demo-web/src/app/layout.tsx  97ef49c4fdfd
+demo-web/src/app/page.tsx  2f8898a70fa0
+demo-web/src/components/Hello.tsx  17bc8873505a
+demo-web/tsconfig.json  f23c3b4f2520"
+`;
+
 exports[`canonical config snapshots > matches the recorded manifest for 09-next-minimal-npm 1`] = `
 "demo/demo-web/.gitignore  d44656612f08
 demo/demo-web/README.md  6e702151e4b4
@@ -96,12 +187,12 @@ exports[`canonical config snapshots > matches the recorded manifest for 10-next-
 demo/demo-web/.env  388021020131
 demo/demo-web/.env.example  6d7547d359d5
 demo/demo-web/.gitignore  e794b616b5a7
-demo/demo-web/Dockerfile  bdedb3cb347b
+demo/demo-web/Dockerfile  fd213bcfcfb2
 demo/demo-web/README.md  a23da4889c26
 demo/demo-web/next.config.ts  eb339f94d0df
 demo/demo-web/package.json  89b3d3fb5d31
 demo/demo-web/postcss.config.mjs  a0247228772d
-demo/demo-web/prisma.config.ts  1c477516bcc2
+demo/demo-web/prisma.config.ts  c192d18e96f0
 demo/demo-web/prisma/schema.prisma  1c9517ad3f9c
 demo/demo-web/src/app/globals.css  11b8e69e89a3
 demo/demo-web/src/app/layout.tsx  facb3c7c80fb
