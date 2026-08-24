@@ -44,6 +44,10 @@ export const VERSIONS: Record<string, string> = {
   // frontend
   vite: '^8.2.2',
   '@vitejs/plugin-react': '^6.1.0',
+  expo: '^57.0.15',
+  'expo-router': '^57.0.15',
+  'react-native': '^0.87.0',
+  'react-native-web': '^0.21.2',
 
   // styling
   tailwindcss: '^4.3.3',

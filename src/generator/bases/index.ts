@@ -2,5 +2,6 @@
 import './next'
 import './express'
 import './vite-react'
+import './expo'
 
 export {}
